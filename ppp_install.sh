@@ -35,7 +35,7 @@ if [ -f "/root/ppp_install.sh" ]; then
     bash /root/ppp_install.sh
 else
     echo "❌ 脚本文件不存在，请重新下载"
-    echo "wget -4 -O /root/ppp_install.sh https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/ppp_install.sh"
+    echo "wget -4 -O /root/ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
     echo "chmod +x /root/ppp_install.sh"
 fi
 EOF
@@ -221,7 +221,7 @@ download_main_binary() {
 setup_systemd_service() {
     local service_url
 
-    service_url="${GITHUB_PROXY}https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/ppp.service"
+    service_url="${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.service"
 
     prompt_replace_file "/etc/systemd/system/ppp.service" "$service_url" "ppp.service" || return 1
 
@@ -238,7 +238,7 @@ auto_install() {
     download_main_binary || return 1
 
     prompt_replace_file "/opt/ppp/ppp.sh" \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/ppp.sh" \
+        "${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.sh" \
         "ppp.sh" || return 1
     chmod +x /opt/ppp/ppp.sh
 
@@ -250,7 +250,7 @@ auto_install() {
     fi
 
     prompt_replace_file "/opt/ppp/appsettings.json" \
-        "${GITHUB_PROXY}https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/appsettings.json" \
+        "${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/appsettings.json" \
         "appsettings.json" || return 1
 
     read -p "服务器 IP（默认 0.0.0.0）: " NEW_IP
@@ -369,9 +369,9 @@ update_script() {
     read -p "请输入 [1-2]（默认 2 直连）: " update_mode
 
     if [ "$update_mode" = "1" ]; then
-        update_url="https://git.apad.pro/https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/ppp_install.sh"
+        update_url="https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
     else
-        update_url="https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/ppp_install.sh"
+        update_url="https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
     fi
 
     print "📥 正在下载最新脚本..." "$BLUE"
