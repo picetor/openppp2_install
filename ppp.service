@@ -1,0 +1,17 @@
+[Unit]
+Description=PPP PRIVATE NETWORK™ 2
+After=network.target network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/ppp
+ExecStart=/bin/bash /opt/ppp/ppp.sh
+Restart=always
+RestartSec=20
+StartLimitBurst=5
+SyslogIdentifier=ppp
+
+[Install]
+WantedBy=multi-user.target
