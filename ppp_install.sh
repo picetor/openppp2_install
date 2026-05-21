@@ -465,7 +465,7 @@ create_ppp_shortcut
 
 while true; do
     clear
-    print "=============== openppp2 一键脚本（v3.9.2 picetor 仓库）===============" "$BLUE"
+    print "=============== openppp2 一键脚本（v4.0 picetor 仓库）===============" "$BLUE"
     echo "1) 服务端 - 完整自动安装（推荐，自动最优版本）"
     echo "2) 服务端 - 配置系统服务（自行修改配置后使用）"
     echo "3) 通用 - 更新二进制文件（自动最优版本）"
