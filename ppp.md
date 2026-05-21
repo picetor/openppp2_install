@@ -13,11 +13,11 @@ https://git.apad.pro/ 加速
 <pre class="language-markup">cd /opt/ppp && wget -O openppp2.zip https://git.apad.pro/https://github.com/liulilittle/openppp2/releases/latest/download/openppp2-linux-amd64.zip && unzip -o openppp2.zip ppp && chmod +x ppp && rm -f openppp2.zip && systemctl restart ppp.service && echo "✅ 更新完成并重启" <code></code></pre>
 拉取启动脚本
  
-<pre class="language-markup">wget https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/ppp.sh && chmod +x ppp.sh <code></code></pre>
+<pre class="language-markup">wget https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.sh && chmod +x ppp.sh <code></code></pre>
 
 拉取配置文件
-<pre class="language-markup"> wget -O appsettings.json https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/appsettings.json <code></code></pre>
+<pre class="language-markup"> wget -O appsettings.json https://raw.githubusercontent.com/picetor/openppp2_install/main/config/appsettings.json <code></code></pre>
 自行修改配置文件
 
 拉取系统服务
-<pre class="language-markup">wget -P /etc/systemd/system https://raw.githubusercontent.com/zouazhi/zouazhi/main/ppp/config/ppp.service && chmod +x /opt/ppp/ && chmod +x /opt/ppp/ppp && systemctl daemon-reload && systemctl enable ppp.service  && systemctl start ppp.service && systemctl status ppp.service<code></code></pre>
+<pre class="language-markup">wget -P /etc/systemd/system https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.service && chmod +x /opt/ppp/ && chmod +x /opt/ppp/ppp && systemctl daemon-reload && systemctl enable ppp.service  && systemctl start ppp.service && systemctl status ppp.service<code></code></pre>
