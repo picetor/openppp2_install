@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# openppp2 一键安装脚本（v3.9 默认直连 + 客户端配置自动重启）
+# openppp2 一键安装脚本（v4.0 仓库迁移至 picetor/openppp2_install）
 # 自动检测架构 + tc + io-uring + simd，选择最佳版本
 # 修复：
 # 1. io_uring 内核版本判断错误（应为 5.10+）
@@ -8,6 +8,7 @@
 # 3. 补全部分架构/能力组合判断
 # 新增：客户端模式 - 扫描 /opt/ppp 下 JSON 并写入 ppp.sh，自动重启服务
 # 变更：默认下载源改为直连 GitHub（国际），可选用国内加速
+# 变更：仓库由 zouazhi/zouazhi 迁移至 picetor/openppp2_install，去除 ppp 子目录
 # =============================================================================
 
 set -o pipefail
@@ -459,9 +460,12 @@ EOF
 }
 
 # ==================== 主菜单 ====================
+# 脚本启动时自动注册 ppp 快捷命令
+create_ppp_shortcut
+
 while true; do
     clear
-    print "=============== openppp2 一键脚本（v3.9 默认直连）===============" "$BLUE"
+    print "=============== openppp2 一键脚本（v3.9.2 picetor 仓库）===============" "$BLUE"
     echo "1) 服务端 - 完整自动安装（推荐，自动最优版本）"
     echo "2) 服务端 - 配置系统服务（自行修改配置后使用）"
     echo "3) 通用 - 更新二进制文件（自动最优版本）"
@@ -469,11 +473,10 @@ while true; do
     echo "5) 通用 - 停止服务"
     echo "6) 通用 - 查看运行状态（日志前50行）"
     echo "7) 通用 - 完全卸载"
-    echo "8) 设置 ppp 快捷命令"
-    echo "9) 更新本脚本"
-    echo "10) 客户端 - 换配置文件重启"
-    echo "11) 退出"
-    read -p "请输入选项 [1-11]: " OPERATION
+    echo "8) 更新本脚本"
+    echo "9) 客户端 - 更换配置文件（自动重启）"
+    echo "10) 退出"
+    read -p "请输入选项 [1-10]: " OPERATION
 
     case "$OPERATION" in
         1)
@@ -498,15 +501,12 @@ while true; do
             uninstall_ppp
             ;;
         8)
-            create_ppp_shortcut
-            ;;
-        9)
             update_script
             ;;
-        10)
+        9)
             configure_client_json
             ;;
-        11)
+        10)
             print "👋 退出脚本" "$GREEN"
             exit 0
             ;;
