@@ -1,23 +1,83 @@
-# 服务端自动(半自动)安装:一键脚本，仅支持 x86
-<pre class="language-markup">wget -4 -O ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh <code></code></pre>
+# openppp2 一键安装脚本（v4.4）
 
-https://git.apad.pro/ 加速
-<pre class="language-markup">wget -4 -O ppp_install.sh https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh <code></code></pre>
+## 项目介绍
 
+**openppp2** 是一款高性能、轻量级的虚拟以太网隧道工具（Virtual Ethernet Tunnel），类似于 WireGuard + TUN/TAP 的增强版实现。
 
-# 手动
-拉取二进制文件
-<pre class="language-markup">mkdir /opt/ppp && cd /opt/ppp && wget https://github.com/liulilittle/openppp2/releases/latest/download/openppp2-linux-amd64.zip && unzip -o $(ls | grep -m1 'openppp2.*\.zip') ppp -d . && chmod +x ppp && echo "✅ ppp 安装/更新完成" && rm -f $(ls | grep -m1 'openppp2.*\.zip') <code></code></pre>
+### 项目作用
 
-更新
-<pre class="language-markup">cd /opt/ppp && wget -O openppp2.zip https://git.apad.pro/https://github.com/liulilittle/openppp2/releases/latest/download/openppp2-linux-amd64.zip && unzip -o openppp2.zip ppp && chmod +x ppp && rm -f openppp2.zip && systemctl restart ppp.service && echo "✅ 更新完成并重启" <code></code></pre>
-拉取启动脚本
- 
-<pre class="language-markup">wget https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.sh && chmod +x ppp.sh <code></code></pre>
+- 实现点对点或多点安全虚拟网络隧道
+- 支持 TCP + UDP 双协议传输
+- 提供高性能数据转发（支持 io_uring、SIMD 加速）
+- 适用于内网穿透、远程办公、服务器组网、游戏加速等场景
+- 具备较强的抗干扰能力和传输效率，适合弱网环境
+- 支持客户端/服务端模式，可实现多设备组网
 
-拉取配置文件
-<pre class="language-markup"> wget -O appsettings.json https://raw.githubusercontent.com/picetor/openppp2_install/main/config/appsettings.json <code></code></pre>
-自行修改配置文件
+---
 
-拉取系统服务
-<pre class="language-markup">wget -P /etc/systemd/system https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.service && chmod +x /opt/ppp/ && chmod +x /opt/ppp/ppp && systemctl daemon-reload && systemctl enable ppp.service  && systemctl start ppp.service && systemctl status ppp.service<code></code></pre>
+## 适用范围
+
+### 支持系统
+- Debian 10 / 11 / 12（重点优化）
+- Ubuntu 20.04 及以上
+- 其他 glibc ≥ 2.28 的 Linux 发行版（低版本 glibc 可自动切换兼容包）
+
+### 支持架构
+- **x86_64 / amd64**（功能最完整，推荐）
+- **aarch64 / arm64**（树莓派、ARM 服务器等）
+- **armv7l**
+- **mips / mipsel**
+- **ppc64le**
+- **riscv64**
+- **s390x**
+
+### 适用场景
+- 个人/企业内网穿透
+- 远程安全访问
+- 多地区服务器组网
+- 需要低延迟、高吞吐的隧道需求
+- VPS / 云服务器组网
+
+---
+
+## 安装的软件
+
+### 1. 核心程序
+- **openppp2**（主二进制文件 `ppp`）
+- 智能选择最优特性版本（含 io_uring、SIMD、TC 加速等）
+
+### 2. 系统依赖（自动安装）
+| 软件包              | 作用                          | 是否必须 |
+|---------------------|-------------------------------|----------|
+| `tmux`              | 管理 TUI 状态界面             | 是      |
+| `jq`                | 配置 JSON 文件修改            | 是      |
+| `unzip`             | 解压下载的程序包              | 是      |
+| `uuid-runtime`      | 生成随机 GUID                 | 是      |
+| `libunwind8`        | 程序运行时栈展开支持          | 是      |
+| `systemd`           | 服务管理（开机自启）          | 是      |
+
+### 3. 安装路径
+- 主程序目录：`/opt/ppp/`
+- 二进制文件：`/opt/ppp/ppp`
+- 配置文件：`/opt/ppp/appsettings.json`
+- systemd 服务：`/etc/systemd/system/ppp.service`
+- 快捷命令：`/usr/local/bin/ppp`
+
+---
+
+## 默认配置
+
+- **监听端口**：`20000`（TCP + UDP）
+- **监听地址**：`0.0.0.0`
+- **工作模式**：服务端（可切换客户端）
+
+---
+
+## 快速安装
+
+```bash
+# 国内加速（推荐）
+wget -4 -O ppp_install.sh https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
+
+# 直连 GitHub
+wget -4 -O ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
