@@ -8,7 +8,7 @@ tmux kill-session -t ppp 2>/dev/null
 
 # 创建新的后台 tmux 会话（提供伪终端，ppp 可显示 TUI）
 tmux new-session -d -s ppp \
-    './ppp --mode=server'
+    './ppp --mode=server > ./ppp.log'
 
 # 等待 tmux 会话完全创建
 sleep 1
