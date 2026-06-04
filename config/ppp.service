@@ -8,9 +8,14 @@ User=root
 Group=root
 WorkingDirectory=/opt/ppp
 ExecStart=/bin/bash /opt/ppp/ppp.sh
+ExecStop=/usr/bin/tmux kill-session -t ppp
 Restart=always
 RestartSec=20
 StartLimitBurst=5
+StartLimitIntervalSec=60
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=15
 SyslogIdentifier=ppp
 
 [Install]
