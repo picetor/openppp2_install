@@ -1,4 +1,4 @@
-# openppp2 一键安装脚本（v4.4）
+# openppp2 一键安装脚本
 > 双仓库智能适配 + tmux 管理 | 支持多架构、低 glibc 兼容
 本脚本用于**一键安装、配置、管理** [openppp2](https://github.com/liulilittle/openppp2) 高性能隧道程序。  
 支持服务端/客户端模式，自动选择最优二进制版本，并提供 systemd + tmux 进程管理。
@@ -68,7 +68,7 @@ wget -4 -O ppp_install.sh https://git.apad.pro/https://raw.githubusercontent.com
     
 - 检测 AES-NI 指令集
     
-- 检测 `tc` 流量控制工具
+- 检测 是否`tc`加成 
     
 - 低 glibc 系统自动选用 `debian10` 兼容包（仅 Miaocchi 仓库）
     
