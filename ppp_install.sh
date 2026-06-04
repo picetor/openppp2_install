@@ -4,7 +4,7 @@
 # - liulilittle: 全兼容，按特性自动选择最佳版本
 # - Miaocchi: 低 glibc 系统自动选 debian10 包，高版本按特性选择
 # - 纯 bash glibc 检测（无 bc 依赖）
-# - 自动安装 libunwind
+# - 自动安装 libunwind + tmux
 # =============================================================================
 
 set -o pipefail
@@ -222,19 +222,19 @@ prompt_replace_file() {
     fi
 }
 
-# ==================== 依赖安装 ====================
+# ==================== 依赖安装（新增 tmux） ====================
 install_deps() {
-    print "🔧 安装基础依赖 (jq, uuid, unzip)..." "$BLUE"
+    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux)..." "$BLUE"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip
+        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux
     elif command_exists dnf; then
-        dnf install -y -q jq util-linux unzip
+        dnf install -y -q jq util-linux unzip tmux
     elif command_exists yum; then
-        yum install -y -q jq util-linux unzip
+        yum install -y -q jq util-linux unzip tmux
     else
         print "❌ 无法识别包管理器" "$RED"; return 1
     fi
-    command_exists jq && command_exists unzip || { print "❌ 依赖安装失败" "$RED"; return 1; }
+    command_exists jq && command_exists unzip && command_exists tmux || { print "❌ 依赖安装失败" "$RED"; return 1; }
     install_libunwind || return 1
     print "✅ 所有依赖就绪" "$GREEN"
     return 0
@@ -356,14 +356,19 @@ update_binary_only() {
     print "✅ 二进制更新完毕，如需生效请重启服务 (选项 4)" "$GREEN"
 }
 
-# ==================== 4-10 功能保持不变 ====================
+# ==================== 4-10 功能（修改状态查看） ====================
 restart_service() { systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN"; }
 stop_service() { systemctl stop ppp.service && print "✅ 服务已停止" "$GREEN"; }
 
 show_status() {
-    print "=== ppp.log（前 50 行）===" "$BLUE"
-    [ -f "/opt/ppp/ppp.log" ] && watch -n 1 'head -n 50 /opt/ppp/ppp.log' || print "日志文件不存在" "$YELLOW"
-    echo; print "=== ppp.service 状态 ===" "$BLUE"
+    print "=== 实时日志 (tail -f /opt/ppp/ppp.log) ===" "$BLUE"
+    if [ -f "/opt/ppp/ppp.log" ]; then
+        tail -f /opt/ppp/ppp.log
+    else
+        print "日志文件不存在" "$YELLOW"
+    fi
+    echo
+    print "=== ppp.service 状态 ===" "$BLUE"
     systemctl status ppp.service --no-pager -l
 }
 
@@ -426,7 +431,7 @@ while true; do
     echo "3) 通用 - 更新二进制文件"
     echo "4) 通用 - 重启服务"
     echo "5) 通用 - 停止服务"
-    echo "6) 通用 - 查看运行状态"
+    echo "6) 通用 - 查看运行状态 (实时日志)"
     echo "7) 通用 - 完全卸载"
     echo "8) 更新本脚本"
     echo "9) 客户端 - 更换配置文件"
