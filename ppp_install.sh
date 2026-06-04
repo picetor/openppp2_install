@@ -1,10 +1,11 @@
 #!/bin/bash
 # =============================================================================
-# openppp2 一键安装脚本（v4.3.2 双仓库智能适配版）
+# openppp2 一键安装脚本（v4.4 双仓库智能适配 + tmux 管理）
 # - liulilittle: 全兼容，按特性自动选择最佳版本
 # - Miaocchi: 低 glibc 系统自动选 debian10 包，高版本按特性选择
 # - 纯 bash glibc 检测（无 bc 依赖）
 # - 自动安装 libunwind + tmux
+# - 状态查看改用 tmux attach，完美显示 TUI
 # =============================================================================
 
 set -o pipefail
@@ -113,7 +114,6 @@ choose_best_zip() {
 
     case "$arch" in
         x86_64|amd64)
-            # --- liulilittle 仓库：全兼容，直接按特性选择 ---
             if [ "$REPO_OWNER" = "liulilittle" ]; then
                 if kernel_supports_io_uring && has_aesni && has_tc; then
                     echo "openppp2-linux-amd64-tc-io-uring-simd.zip"
@@ -135,14 +135,12 @@ choose_best_zip() {
                 return
             fi
 
-            # --- Miaocchi 仓库：低 glibc 系统用 debian10 包 ---
             if [ "$REPO_OWNER" = "Miaocchi" ]; then
                 if glibc_lt_238; then
                     print "💡 检测到 glibc 版本较低，自动选用 Debian 10 兼容包" "$YELLOW"
                     echo "openppp2-linux-amd64-debian10.zip"
                     return
                 fi
-                # 高版本 glibc 按特性选择
                 if kernel_supports_io_uring && has_aesni && has_tc; then
                     echo "openppp2-linux-amd64-tc-io-uring-simd.zip"
                 elif kernel_supports_io_uring && has_aesni; then
@@ -222,7 +220,7 @@ prompt_replace_file() {
     fi
 }
 
-# ==================== 依赖安装（新增 tmux） ====================
+# ==================== 依赖安装（含 tmux） ====================
 install_deps() {
     print "🔧 安装基础依赖 (jq, uuid, unzip, tmux)..." "$BLUE"
     if command_exists apt-get; then
@@ -356,22 +354,31 @@ update_binary_only() {
     print "✅ 二进制更新完毕，如需生效请重启服务 (选项 4)" "$GREEN"
 }
 
-# ==================== 4-10 功能（修改状态查看） ====================
+# ==================== 4) 重启服务 ====================
 restart_service() { systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN"; }
+
+# ==================== 5) 停止服务 ====================
 stop_service() { systemctl stop ppp.service && print "✅ 服务已停止" "$GREEN"; }
 
+# ==================== 6) 查看运行状态（tmux attach） ====================
 show_status() {
-    print "=== 实时日志 (tail -f /opt/ppp/ppp.log) ===" "$BLUE"
-    if [ -f "/opt/ppp/ppp.log" ]; then
-        tail -f /opt/ppp/ppp.log
-    else
-        print "日志文件不存在" "$YELLOW"
+    if ! command_exists tmux; then
+        print "❌ tmux 未安装，无法查看状态" "$RED"
+        return 1
     fi
-    echo
-    print "=== ppp.service 状态 ===" "$BLUE"
-    systemctl status ppp.service --no-pager -l
+    if tmux has-session -t ppp 2>/dev/null; then
+        print "📺 正在连接到 ppp 会话 (按 Ctrl+B 然后按 D 退出界面)" "$BLUE"
+        sleep 1
+        tmux attach -t ppp
+    else
+        print "⚠️ ppp tmux 会话不存在，服务可能未运行" "$YELLOW"
+        echo
+        print "=== ppp.service 状态 ===" "$BLUE"
+        systemctl status ppp.service --no-pager -l
+    fi
 }
 
+# ==================== 7) 卸载 ====================
 uninstall_ppp() {
     print "🗑️ 开始卸载..." "$YELLOW"
     systemctl stop ppp.service 2>/dev/null
@@ -391,6 +398,7 @@ uninstall_ppp() {
     exit 0
 }
 
+# ==================== 8) 更新脚本 ====================
 update_script() {
     local u url
     print "🌍 更新本脚本" "$BLUE"
@@ -400,6 +408,7 @@ update_script() {
     wget -4 -O /root/ppp_install.sh "$url" && chmod +x /root/ppp_install.sh && { print "✅ 更新成功" "$GREEN"; exec /root/ppp_install.sh; } || print "❌ 更新失败" "$RED"
 }
 
+# ==================== 9) 客户端配置切换 ====================
 configure_client_json() {
     print "🔧 客户端模式" "$BLUE"
     [ ! -d "/opt/ppp" ] && mkdir -p /opt/ppp
@@ -425,13 +434,13 @@ configure_client_json() {
 create_ppp_shortcut
 while true; do
     clear
-    print "=============== openppp2 一键脚本（v4.3.2 双仓库智能适配）===============" "$BLUE"
+    print "=============== openppp2 一键脚本（v4.4 双仓库 + tmux 管理）===============" "$BLUE"
     echo "1) 服务端 - 完整自动安装"
     echo "2) 服务端 - 配置系统服务"
     echo "3) 通用 - 更新二进制文件"
     echo "4) 通用 - 重启服务"
     echo "5) 通用 - 停止服务"
-    echo "6) 通用 - 查看运行状态 (实时日志)"
+    echo "6) 通用 - 查看运行状态 (tmux 界面，Ctrl+B D 退出)"
     echo "7) 通用 - 完全卸载"
     echo "8) 更新本脚本"
     echo "9) 客户端 - 更换配置文件"
