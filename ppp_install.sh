@@ -1,22 +1,19 @@
 #!/bin/bash
 # =============================================================================
-# openppp2 一键安装脚本（v4.3.1 修复版）
-# 特性：
-#   - 修复 zip_name 变量被 print 输出污染的问题
-#   - 纯 bash glibc 版本检测（无需 bc）
-#   - 自动安装 libunwind 依赖
-#   - 双仓库支持（liulilittle / Miaocchi）
-#   - 二进制兼容性验证及自动回退机制
+# openppp2 一键安装脚本（v4.2 完整版，双仓库 + 智能兼容 Debian 12）
+# 自动检测 glibc 版本，<2.38 时选用 debian10 兼容包
+# 强制安装 libunwind.so.8
 # =============================================================================
 
 set -o pipefail
 
+# ---------- 颜色 ----------
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; BLUE='\033[34m'; RESET='\033[0m'
-print() { echo -e "${2:-$GREEN}$1${RESET}" >&2; }  # 输出到 stderr，避免污染变量
+print() { echo -e "${2:-$GREEN}$1${RESET}"; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# ==================== 快捷命令 ====================
+# ---------- 快捷命令 ----------
 create_ppp_shortcut() {
     if [ ! -f "/usr/local/bin/ppp" ]; then
         cat > /usr/local/bin/ppp << 'EOF'
@@ -36,7 +33,7 @@ EOF
     fi
 }
 
-# ==================== 系统检测 ====================
+# ---------- 系统检测 ----------
 has_aesni() { grep -qi 'aes' /proc/cpuinfo 2>/dev/null; }
 kernel_supports_io_uring() {
     local major minor
@@ -46,7 +43,7 @@ kernel_supports_io_uring() {
 }
 has_tc() { command_exists tc; }
 
-# ==================== libunwind 安装 ====================
+# ---------- 安装 libunwind ----------
 install_libunwind() {
     if ldconfig -p 2>/dev/null | grep -q 'libunwind\.so\.8'; then
         print "✅ libunwind.so.8 已存在" "$GREEN"
@@ -54,11 +51,11 @@ install_libunwind() {
     fi
     print "🔧 检测到缺少 libunwind.so.8，正在安装..." "$YELLOW"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq libunwind8
+        apt-get update && apt-get install -y libunwind8
     elif command_exists dnf; then
-        dnf install -y -q libunwind
+        dnf install -y libunwind
     elif command_exists yum; then
-        yum install -y -q libunwind
+        yum install -y libunwind
     else
         print "❌ 无法识别包管理器，请手动安装 libunwind" "$RED"
         return 1
@@ -72,7 +69,7 @@ install_libunwind() {
     fi
 }
 
-# ==================== 代理 ====================
+# ---------- 代理 ----------
 select_proxy() {
     print "🌍 是否使用国内加速代理？" "$BLUE"
     read -p "输入 y 使用加速，直接回车直连: " USE_PROXY
@@ -85,7 +82,7 @@ select_proxy() {
     fi
 }
 
-# ==================== 仓库选择 ====================
+# ---------- 仓库选择 ----------
 select_repo() {
     print "📦 请选择 openppp2 仓库" "$BLUE"
     echo "1) liulilittle/openppp2 (原版)"
@@ -100,36 +97,27 @@ select_repo() {
     fi
 }
 
-# ==================== 纯 bash 版本比较 ====================
-glibc_lt_238() {
-    local ver major minor
-    ver=$(ldd --version 2>/dev/null | head -1 | grep -oP '\d+\.\d+' | head -1)
-    if [ -z "$ver" ]; then return 1; fi
-    major="${ver%%.*}"
-    minor="${ver#*.}"
-    # 小于 2.38：major < 2，或者 major == 2 且 minor < 38
-    [ "$major" -lt 2 ] && return 0
-    [ "$major" -eq 2 ] && [ "$minor" -lt 38 ] && return 0
-    return 1
-}
-
-# ==================== 智能选择版本（仅输出文件名到 stdout） ====================
+# ---------- 智能版本选择 ----------
 choose_best_zip() {
     local arch
     arch=$(uname -m)
 
-    # x86_64 且 glibc < 2.38 → debian10 包
+    # 智能兼容：低版本 glibc (Debian 12) 自动用 debian10 包
     if [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; then
-        if glibc_lt_238; then
-            print "💡 检测到 glibc 版本较低，自动选用 Debian 10 兼容包" "$YELLOW"
-            echo "openppp2-linux-amd64-debian10.zip"
+        local glibc_ver
+        glibc_ver=$(ldd --version 2>/dev/null | head -1 | grep -oP '\d+\.\d+' | head -1)
+        if [ -n "$glibc_ver" ] && [ "$(echo "$glibc_ver < 2.38" | bc 2>/dev/null)" -eq 1 ]; then
+            local deb10="openppp2-linux-amd64-debian10.zip"
+            print "💡 glibc ${glibc_ver} < 2.38，自动选用 Debian 10 兼容包" "$YELLOW"
+            echo "$deb10"
             return
         fi
     fi
 
-    # 常规匹配
+    # 常规自动匹配
     case "$arch" in
         x86_64|amd64)
+            # 两个仓库的包名相同
             if kernel_supports_io_uring && has_aesni && has_tc; then
                 echo "openppp2-linux-amd64-tc-io-uring-simd.zip"
             elif kernel_supports_io_uring && has_aesni; then
@@ -202,14 +190,11 @@ choose_best_zip() {
                 echo "openppp2-linux-s390x.zip"
             fi
             ;;
-        *) 
-            print "❌ 不支持的架构: $arch" "$RED"
-            exit 1 
-            ;;
+        *) print "❌ 不支持的架构: $arch" "$RED"; exit 1 ;;
     esac
 }
 
-# ==================== 下载 ====================
+# ---------- 下载函数 ----------
 prompt_replace_file() {
     local target_path="$1" url="$2" desc="$3"
     mkdir -p "$(dirname "$target_path")"
@@ -219,27 +204,24 @@ prompt_replace_file() {
         [[ ! "$REPLACE" =~ ^[Yy]$ ]] && return 0
     fi
     print "📥 正在下载 $desc ..." "$BLUE"
-    if wget -4 --no-check-certificate -q --show-progress -O "$target_path" "$url"; then
-        print "✅ $desc 下载完成" "$GREEN"
-        return 0
-    else
-        print "❌ $desc 下载失败！" "$RED"
-        return 1
-    fi
+    wget -4 --no-check-certificate -q --show-progress -O "$target_path" "$url" && {
+        print "✅ $desc 下载完成" "$GREEN"; return 0
+    } || {
+        print "❌ $desc 下载失败！" "$RED"; return 1
+    }
 }
 
-# ==================== 依赖安装 ====================
+# ---------- 基础依赖安装 ----------
 install_deps() {
     print "🔧 安装基础依赖 (jq, uuid, unzip)..." "$BLUE"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip
+        apt-get update && apt-get install -y jq uuid-runtime unzip
     elif command_exists dnf; then
-        dnf install -y -q jq util-linux unzip
+        dnf install -y jq util-linux unzip
     elif command_exists yum; then
-        yum install -y -q jq util-linux unzip
+        yum install -y jq util-linux unzip
     else
-        print "❌ 无法识别包管理器" "$RED"
-        return 1
+        print "❌ 无法识别包管理器" "$RED"; return 1
     fi
     command_exists jq && command_exists unzip || { print "❌ 依赖安装失败" "$RED"; return 1; }
     install_libunwind || return 1
@@ -247,75 +229,30 @@ install_deps() {
     return 0
 }
 
-# ==================== 解压并校验二进制 ====================
-extract_and_verify() {
-    local zip_name="$1"
-    print "📦 解压并检查 $zip_name ..." "$BLUE"
-    if ! unzip -o "$zip_name" ppp -d . ; then
-        print "❌ 解压失败" "$RED"
-        return 1
-    fi
-    chmod +x ppp
-
-    print "🔎 检查二进制依赖是否满足..." "$BLUE"
-    local miss
-    miss=$(ldd ppp 2>&1 | grep "not found")
-    if [ -z "$miss" ]; then
-        print "✅ 二进制依赖完整，兼容当前系统" "$GREEN"
-        return 0
-    else
-        print "❌ 二进制存在未满足的依赖:" "$RED"
-        echo "$miss"
-        return 1
-    fi
-}
-
-# ==================== 下载主程序（含回退） ====================
+# ---------- 下载解压主程序 ----------
 download_main_binary() {
-    local zip_name url fallback_name="openppp2-linux-amd64-debian10.zip"
-    
-    # 捕获 choose_best_zip 的 stdout（文件名）
+    local zip_name url
     zip_name=$(choose_best_zip)
     print "🔍 最优版本：$zip_name (仓库: $REPO_OWNER)" "$BLUE"
 
     mkdir -p /opt/ppp || return 1
     cd /opt/ppp || return 1
 
-    # 构造下载链接
     url="${GITHUB_PROXY}https://github.com/${REPO_OWNER}/openppp2/releases/latest/download/${zip_name}"
-    
-    # 下载首选版本
-    if prompt_replace_file "/opt/ppp/${zip_name}" "$url" "$zip_name"; then
-        if extract_and_verify "$zip_name"; then
-            rm -f "$zip_name" 2>/dev/null
-            return 0
-        fi
-    fi
+    prompt_replace_file "/opt/ppp/${zip_name}" "$url" "$zip_name" || return 1
 
-    # 回退机制：仅在 x86_64 且首选不是 debian10 时触发
-    if { [ "$(uname -m)" = "x86_64" ] || [ "$(uname -m)" = "amd64" ]; } && [ "$zip_name" != "$fallback_name" ]; then
-        print "⚠️ 当前版本不兼容，尝试回退到 Debian 10 兼容包 ..." "$YELLOW"
-        rm -f "$zip_name" ppp 2>/dev/null
-
-        url="${GITHUB_PROXY}https://github.com/${REPO_OWNER}/openppp2/releases/latest/download/${fallback_name}"
-        if prompt_replace_file "/opt/ppp/${fallback_name}" "$url" "$fallback_name"; then
-            if extract_and_verify "$fallback_name"; then
-                rm -f "$fallback_name" 2>/dev/null
-                print "✅ 回退成功，使用 Debian 10 兼容二进制" "$GREEN"
-                return 0
-            else
-                rm -f "$fallback_name" ppp 2>/dev/null
-            fi
-        fi
-        print "❌ 回退方案也失败了，请检查网络或手动下载" "$RED"
+    command_exists unzip || { print "❌ 未安装 unzip" "$RED"; return 1; }
+    if unzip -o "$zip_name" ppp -d . && chmod +x ppp; then
+        rm -f "$zip_name"
+        print "✅ openppp2 二进制准备完成" "$GREEN"
+        return 0
+    else
+        print "❌ 解压失败" "$RED"
         return 1
     fi
-
-    print "❌ 安装失败" "$RED"
-    return 1
 }
 
-# ==================== systemd 服务 ====================
+# ---------- systemd 服务 ----------
 setup_systemd_service() {
     local service_url="${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/ppp.service"
     prompt_replace_file "/etc/systemd/system/ppp.service" "$service_url" "ppp.service" || return 1
@@ -324,7 +261,7 @@ setup_systemd_service() {
     systemctl enable --now ppp.service
 }
 
-# ==================== 1) 完整自动安装 ====================
+# ---------- 1) 自动安装 ----------
 auto_install() {
     select_proxy
     select_repo
@@ -374,9 +311,7 @@ auto_install() {
         .key."protocol-key" = $pkey |
         .key."transport-key" = $tkey
     ' appsettings.json > temp.json && mv temp.json appsettings.json || {
-        print "❌ 配置修改失败" "$RED"
-        rm -f temp.json
-        return 1
+        print "❌ 配置修改失败" "$RED"; rm -f temp.json; return 1
     }
 
     setup_systemd_service || return 1
@@ -389,7 +324,7 @@ auto_install() {
     fi
 }
 
-# ==================== 2) 仅配置服务 ====================
+# ---------- 2) 仅配置服务 ----------
 configure_service_only() {
     if [ ! -f "/opt/ppp/appsettings.json" ]; then
         print "❌ 未找到 appsettings.json，请先运行选项 1" "$RED"
@@ -401,7 +336,7 @@ configure_service_only() {
     print "✅ 系统服务配置完成并启动" "$GREEN"
 }
 
-# ==================== 3) 更新二进制 ====================
+# ---------- 3) 更新二进制 ----------
 update_binary_only() {
     select_proxy
     select_repo
@@ -410,17 +345,17 @@ update_binary_only() {
     print "✅ 二进制更新完毕，如需生效请重启服务 (选项 4)" "$GREEN"
 }
 
-# ==================== 4) 重启服务 ====================
+# ---------- 4) 重启服务 ----------
 restart_service() {
     systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN"
 }
 
-# ==================== 5) 停止服务 ====================
+# ---------- 5) 停止服务 ----------
 stop_service() {
     systemctl stop ppp.service && print "✅ 服务已停止" "$GREEN"
 }
 
-# ==================== 6) 查看状态 ====================
+# ---------- 6) 查看状态 ----------
 show_status() {
     print "=== ppp.log（前 50 行）===" "$BLUE"
     if [ -f "/opt/ppp/ppp.log" ]; then
@@ -433,7 +368,7 @@ show_status() {
     systemctl status ppp.service --no-pager -l
 }
 
-# ==================== 7) 卸载 ====================
+# ---------- 7) 卸载 ----------
 uninstall_ppp() {
     print "🗑️ 开始卸载..." "$YELLOW"
     systemctl stop ppp.service 2>/dev/null
@@ -455,7 +390,7 @@ uninstall_ppp() {
     exit 0
 }
 
-# ==================== 8) 更新脚本 ====================
+# ---------- 8) 更新脚本 ----------
 update_script() {
     local update_mode update_url
     print "🌍 更新本脚本 - 请选择方式" "$BLUE"
@@ -477,7 +412,7 @@ update_script() {
     fi
 }
 
-# ==================== 9) 客户端配置切换 ====================
+# ---------- 9) 客户端切换配置 ----------
 configure_client_json() {
     print "🔧 客户端模式 - 更换配置文件并自动重启服务" "$BLUE"
     if [ ! -d "/opt/ppp" ]; then mkdir -p /opt/ppp; fi
@@ -527,14 +462,14 @@ EOF
     fi
 }
 
-# ==================== 主菜单 ====================
+# ---------- 主菜单 ----------
 create_ppp_shortcut
 while true; do
     clear
-    print "=============== openppp2 一键脚本（v4.3.1 修复版）===============" "$BLUE"
-    echo "1) 服务端 - 完整自动安装（自动选最优版本）"
-    echo "2) 服务端 - 配置系统服务（已有配置时使用）"
-    echo "3) 通用 - 更新二进制文件（自动适配）"
+    print "=============== openppp2 一键脚本（v4.2 双仓库 + Debian12 智能适配）===============" "$BLUE"
+    echo "1) 服务端 - 完整自动安装（推荐，自动最优版本）"
+    echo "2) 服务端 - 配置系统服务（自行修改配置后使用）"
+    echo "3) 通用 - 更新二进制文件（自动最优版本）"
     echo "4) 通用 - 重启服务"
     echo "5) 通用 - 停止服务"
     echo "6) 通用 - 查看运行状态（日志前50行）"
