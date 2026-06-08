@@ -82,21 +82,6 @@ install_libunwind() {
     return 1
 }
 
-# ==================== 运行模式选择 ====================
-select_mode() {
-    print "📋 请选择运行模式" "$BLUE"
-    echo "1) 服务端 - 部署为 VPN 服务器"
-    echo "2) 客户端 - 部署为 VPN 客户端"
-    read -p "请输入 [1-2]（默认 1）: " MODE_CHOICE
-    if [ "$MODE_CHOICE" = "2" ]; then
-        RUN_MODE="client"
-        print "✅ 已选择客户端模式" "$GREEN"
-    else
-        RUN_MODE="server"
-        print "✅ 已选择服务端模式" "$GREEN"
-    fi
-}
-
 # ==================== 代理选择 ====================
 select_proxy() {
     print "🌍 是否使用国内加速代理？" "$BLUE"
@@ -296,9 +281,11 @@ setup_systemd_service() {
 }
 
 # ==================== 下载启动脚本（统一命名为 ppp.sh） ====================
+# 参数 $1: 模式名称，server 或 client
 download_startup_script() {
+    local mode="$1"
     local src_script
-    if [ "$RUN_MODE" = "client" ]; then
+    if [ "$mode" = "client" ]; then
         src_script="client.sh"
         print "📋 客户端模式：使用 client.sh 模板" "$BLUE"
     else
@@ -308,101 +295,125 @@ download_startup_script() {
 
     prompt_replace_file "/opt/ppp/ppp.sh" \
         "${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/${src_script}" \
-        "ppp.sh (${RUN_MODE} 模式)" || return 1
+        "ppp.sh (${mode} 模式)" || return 1
     chmod +x /opt/ppp/ppp.sh
 
-    # 客户端模式：提示用户选择配置文件
-    if [ "$RUN_MODE" = "client" ]; then
+    if [ "$mode" = "client" ]; then
         print "📄 请将您的客户端 JSON 配置文件放入 /opt/ppp/ 目录" "$YELLOW"
-        print "📄 然后运行选项 9 选择配置文件" "$YELLOW"
+        print "📄 然后运行选项 2.3 选择配置文件" "$YELLOW"
     fi
     return 0
 }
 
-# ==================== 1) 服务端 - 完整安装 ====================
-auto_install() {
-    select_mode
+# ==================== 1.1) 服务端 - 完整自动安装 ====================
+server_install() {
     select_proxy
     select_repo
     install_deps || return 1
     download_main_binary || return 1
-    download_startup_script || return 1
+    download_startup_script server || return 1
 
-    if [ "$RUN_MODE" = "server" ]; then
-        # 服务端：自动配置 appsettings.json
-        read -p "是否自行修改 appsettings.json？(y/n): " SELF
-        if [[ "$SELF" =~ ^[Yy]$ ]]; then
-            print "请手动修改 /opt/ppp/appsettings.json 后运行选项 2" "$YELLOW"
-            create_ppp_shortcut
-            return 0
-        fi
-
-        prompt_replace_file "/opt/ppp/appsettings.json" \
-            "${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/appsettings.json" \
-            "appsettings.json" || return 1
-
-        read -p "服务器 IP（默认 0.0.0.0）: " NEW_IP
-        read -p "端口（默认 20000）: " NEW_PORT
-        read -p "GUID（留空自动生成）: " NEW_GUID
-        NEW_IP=${NEW_IP:-0.0.0.0}
-        NEW_PORT=${NEW_PORT:-20000}
-        [[ -z "$NEW_GUID" ]] && NEW_GUID=$(uuidgen)
-
-        PROTOCOL_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
-        TRANSPORT_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
-
-        cd /opt/ppp || return 1
-        cp -f appsettings.json appsettings.json.bak 2>/dev/null
-
-        jq --indent 4 \
-            --arg ip "$NEW_IP" \
-            --arg port "$NEW_PORT" \
-            --arg guid "$NEW_GUID" \
-            --arg pkey "$PROTOCOL_KEY" \
-            --arg tkey "$TRANSPORT_KEY" '
-            .tcp.listen.port = ($port|tonumber) |
-            .udp.listen.port = ($port|tonumber) |
-            .udp.static.servers[0] = ($ip + ":" + $port) |
-            .client.server = ("ppp://" + $ip + ":" + $port + "/") |
-            .client.guid = $guid |
-            .key."protocol-key" = $pkey |
-            .key."transport-key" = $tkey
-        ' appsettings.json > temp.json && mv temp.json appsettings.json || {
-            print "❌ 配置修改失败" "$RED"; rm -f temp.json; return 1
-        }
-    else
-        # 客户端：提示用户自行放入配置文件
-        print "📄 请将您的客户端 JSON 配置文件放入 /opt/ppp/ 目录" "$YELLOW"
-        print "📄 然后运行选项 9 选择要使用的配置文件" "$YELLOW"
-        read -p "按 Enter 键继续安装系统服务..." 
+    read -p "是否自行修改 appsettings.json？(y/n): " SELF
+    if [[ "$SELF" =~ ^[Yy]$ ]]; then
+        print "请手动修改 /opt/ppp/appsettings.json 后运行选项 1.2" "$YELLOW"
+        create_ppp_shortcut
+        return 0
     fi
+
+    prompt_replace_file "/opt/ppp/appsettings.json" \
+        "${GITHUB_PROXY}https://raw.githubusercontent.com/picetor/openppp2_install/main/config/appsettings.json" \
+        "appsettings.json" || return 1
+
+    read -p "服务器 IP（默认 0.0.0.0）: " NEW_IP
+    read -p "端口（默认 20000）: " NEW_PORT
+    read -p "GUID（留空自动生成）: " NEW_GUID
+    NEW_IP=${NEW_IP:-0.0.0.0}
+    NEW_PORT=${NEW_PORT:-20000}
+    [[ -z "$NEW_GUID" ]] && NEW_GUID=$(uuidgen)
+
+    PROTOCOL_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
+    TRANSPORT_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
+
+    cd /opt/ppp || return 1
+    cp -f appsettings.json appsettings.json.bak 2>/dev/null
+
+    jq --indent 4 \
+        --arg ip "$NEW_IP" \
+        --arg port "$NEW_PORT" \
+        --arg guid "$NEW_GUID" \
+        --arg pkey "$PROTOCOL_KEY" \
+        --arg tkey "$TRANSPORT_KEY" '
+        .tcp.listen.port = ($port|tonumber) |
+        .udp.listen.port = ($port|tonumber) |
+        .udp.static.servers[0] = ($ip + ":" + $port) |
+        .client.server = ("ppp://" + $ip + ":" + $port + "/") |
+        .client.guid = $guid |
+        .key."protocol-key" = $pkey |
+        .key."transport-key" = $tkey
+    ' appsettings.json > temp.json && mv temp.json appsettings.json || {
+        print "❌ 配置修改失败" "$RED"; rm -f temp.json; return 1
+    }
 
     setup_systemd_service || return 1
 
     if systemctl is-active --quiet ppp.service; then
-        print "🎉 安装成功！服务已启动" "$GREEN"
+        print "🎉 服务端安装成功！服务已启动" "$GREEN"
         create_ppp_shortcut
     else
         print "⚠️ 服务启动失败，请检查日志" "$YELLOW"
     fi
 }
 
-# ==================== 2) 服务端 - 仅配置系统服务 ====================
-configure_service_only() {
+# ==================== 2.1) 客户端 - 完整自动安装 ====================
+client_install() {
+    select_proxy
+    select_repo
+    install_deps || return 1
+    download_main_binary || return 1
+    download_startup_script client || return 1
+
+    print "📄 请将您的客户端 JSON 配置文件放入 /opt/ppp/ 目录" "$YELLOW"
+    print "📄 然后运行选项 2.3 选择要使用的配置文件" "$YELLOW"
+    read -p "按 Enter 键继续安装系统服务..." 
+
+    setup_systemd_service || return 1
+
+    if systemctl is-active --quiet ppp.service; then
+        print "🎉 客户端安装成功！服务已启动" "$GREEN"
+        create_ppp_shortcut
+    else
+        print "⚠️ 服务启动失败，请检查日志" "$YELLOW"
+    fi
+}
+
+# ==================== 1.2) 服务端 - 仅配置系统服务 ====================
+server_configure_service() {
     if [ ! -f "/opt/ppp/appsettings.json" ]; then
         print "❌ 未找到 appsettings.json" "$RED"
         return 1
     fi
     if [ ! -f "/opt/ppp/ppp" ]; then
-        print "❌ 未找到 ppp 二进制文件，请先运行选项 3 下载" "$RED"
+        print "❌ 未找到 ppp 二进制文件，请先运行选项 1.1 或 3 下载" "$RED"
         return 1
     fi
     cd /opt/ppp || { print "❌ /opt/ppp 目录不存在" "$RED"; return 1; }
-    select_mode
     select_proxy
-    download_startup_script || return 1
+    download_startup_script server || return 1
     setup_systemd_service || return 1
-    print "✅ 系统服务配置完成并启动" "$GREEN"
+    print "✅ 服务端系统服务配置完成并启动" "$GREEN"
+}
+
+# ==================== 2.2) 客户端 - 仅配置系统服务 ====================
+client_configure_service() {
+    if [ ! -f "/opt/ppp/ppp" ]; then
+        print "❌ 未找到 ppp 二进制文件，请先运行选项 2.1 或 3 下载" "$RED"
+        return 1
+    fi
+    cd /opt/ppp || { print "❌ /opt/ppp 目录不存在" "$RED"; return 1; }
+    select_proxy
+    download_startup_script client || return 1
+    setup_systemd_service || return 1
+    print "✅ 客户端系统服务配置完成并启动" "$GREEN"
 }
 
 # ==================== 3) 更新二进制 ====================
@@ -473,8 +484,8 @@ update_script() {
     wget -4 -O /root/ppp_install.sh "$url" && chmod +x /root/ppp_install.sh && { print "✅ 更新成功" "$GREEN"; exec /root/ppp_install.sh; } || print "❌ 更新失败" "$RED"
 }
 
-# ==================== 9) 客户端配置切换 ====================
-configure_client_json() {
+# ==================== 2.3) 客户端 - 切换配置文件 ====================
+client_switch_config() {
     print "🔧 客户端模式 - 切换配置文件" "$BLUE"
     [ ! -d "/opt/ppp" ] && mkdir -p /opt/ppp
     [ ! -f "/opt/ppp/ppp" ] && { print "❌ 未找到 ppp 二进制" "$RED"; return 1; }
@@ -518,28 +529,35 @@ create_ppp_shortcut
 while true; do
     clear
     print "=============== openppp2 一键脚本（v4.5 服务端/客户端 + tmux 管理）===============" "$BLUE"
-    echo "1) 安装 - 完整安装（可选服务端/客户端）"
-    echo "2) 服务端 - 仅配置系统服务（不更新二进制）"
-    echo "3) 通用 - 更新二进制文件"
-    echo "4) 通用 - 重启服务"
-    echo "5) 通用 - 停止服务"
-    echo "6) 通用 - 查看运行状态 (tmux 界面，Ctrl+B D 退出)"
-    echo "7) 通用 - 完全卸载"
-    echo "8) 更新本脚本"
-    echo "9) 客户端 - 切换配置文件"
-    echo "10) 退出"
-    read -p "请输入选项 [1-10]: " OPERATION
+    echo "----- 服务端 -----"
+    echo "1.1) 完整自动安装"
+    echo "1.2) 仅配置系统服务"
+    echo "----- 客户端 -----"
+    echo "2.1) 完整自动安装"
+    echo "2.2) 仅配置系统服务"
+    echo "2.3) 切换配置文件"
+    echo "----- 通用 -----"
+    echo "3)  更新二进制文件"
+    echo "4)  重启服务"
+    echo "5)  停止服务"
+    echo "6)  查看运行状态 (tmux 界面，Ctrl+B D 退出)"
+    echo "7)  完全卸载"
+    echo "8)  更新本脚本"
+    echo "9)  退出"
+    read -p "请输入选项: " OPERATION
     case "$OPERATION" in
-        1) auto_install ;;
-        2) configure_service_only ;;
+        1.1|11) server_install ;;
+        1.2|12) server_configure_service ;;
+        2.1|21) client_install ;;
+        2.2|22) client_configure_service ;;
+        2.3|23) client_switch_config ;;
         3) update_binary_only ;;
         4) restart_service ;;
         5) stop_service ;;
         6) show_status ;;
         7) uninstall_ppp ;;
         8) update_script ;;
-        9) configure_client_json ;;
-        10) print "👋 退出" "$GREEN"; exit 0 ;;
+        9) print "👋 退出" "$GREEN"; exit 0 ;;
         *) print "❌ 无效选项" "$RED" ;;
     esac
     echo; read -p "按 Enter 键返回主菜单..."
