@@ -384,8 +384,6 @@ server_install() {
                 jq --indent 4 \
                     --arg cwnd "$window_pow" \
                     --arg rwnd "$((window_pow * 2))" '
-                    .tcp.cwnd = ($cwnd|tonumber) |
-                    .tcp.rwnd = ($rwnd|tonumber) |
                     .udp.cwnd = ($cwnd|tonumber) |
                     .udp.rwnd = ($rwnd|tonumber)
                 ' appsettings.json > temp.json && mv temp.json appsettings.json
@@ -555,6 +553,21 @@ bdp_calculate_windows() {
     echo "$window_pow"
 }
 
+# ==================== 获取当前使用的配置文件路径 ====================
+# 从 ppp.sh 中解析 --config=./xxx.json，回退到 appsettings.json
+get_current_config() {
+    if [ -f "/opt/ppp/ppp.sh" ]; then
+        local config_file
+        config_file=$(grep -oP '--config=\./\K[^'\''"]+' /opt/ppp/ppp.sh 2>/dev/null | head -1)
+        if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
+            echo "/opt/ppp/$config_file"
+            return 0
+        fi
+    fi
+    [ -f "/opt/ppp/appsettings.json" ] && echo "/opt/ppp/appsettings.json" && return 0
+    return 1
+}
+
 # ==================== 从当前运行的配置提取服务器 IP ====================
 # 优先从 ppp.sh 中读取 --config=./xxx.json 确定当前使用的配置文件
 # 回退到 appsettings.json
@@ -653,25 +666,31 @@ bdp_calculator() {
     echo
     print "💡 值取 2 的幂次可享受缓存行优化" "$YELLOW"
 
-    # 询问是否写入现有配置
-    if [ -f "/opt/ppp/appsettings.json" ]; then
-        read -p "是否将均衡配置写入 /opt/ppp/appsettings.json？(y/n): " WRITE
+    # 写入当前使用的配置文件
+    local target_cfg
+    target_cfg=$(get_current_config)
+    if [ -n "$target_cfg" ]; then
+        local cfg_name
+        cfg_name=$(basename "$target_cfg")
+        read -p "是否将均衡配置写入 ${cfg_name}？(y/n): " WRITE
         if [[ "$WRITE" =~ ^[Yy]$ ]]; then
-            cd /opt/ppp || return 1
-            cp -f appsettings.json appsettings.json.bak 2>/dev/null
+            local cfg_dir
+            cfg_dir=$(dirname "$target_cfg")
+            cd "$cfg_dir" || return 1
+            cp -f "$cfg_name" "${cfg_name}.bak" 2>/dev/null
             jq --indent 4 \
                 --arg cwnd "$window_pow" \
                 --arg rwnd "$((window_pow * 2))" '
-                .tcp.cwnd = ($cwnd|tonumber) |
-                .tcp.rwnd = ($rwnd|tonumber) |
                 .udp.cwnd = ($cwnd|tonumber) |
                 .udp.rwnd = ($rwnd|tonumber)
-            ' appsettings.json > temp.json && mv temp.json appsettings.json && {
-                print "✅ 配置已写入，请重启服务生效" "$GREEN"
+            ' "$cfg_name" > temp.json && mv temp.json "$cfg_name" && {
+                print "✅ 配置已写入 ${cfg_name}，请重启服务生效" "$GREEN"
             } || {
                 print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
             }
         fi
+    else
+        print "⚠️ 未找到配置文件，跳过写入" "$YELLOW"
     fi
 }
 
