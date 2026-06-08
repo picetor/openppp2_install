@@ -561,7 +561,7 @@ get_current_config() {
 
     # 1) 从 ppp.sh 中提取 --config=./xxx.json 参数
     if [ -f "/opt/ppp/ppp.sh" ]; then
-        config_file=$(grep -o '--config=\./[^ ]*' /opt/ppp/ppp.sh 2>/dev/null | head -1 | sed 's/--config=\.\///')
+        config_file=$(awk -F"--config=./" '{if(NF>1){split($2,a," "); print a[1]}}' /opt/ppp/ppp.sh 2>/dev/null | head -1)
         if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
             echo "/opt/ppp/$config_file"
             return 0
@@ -587,7 +587,7 @@ extract_server_ip() {
     # 1) 从 ppp.sh 中提取 --config=./xxx.json 参数
     if [ -f "/opt/ppp/ppp.sh" ]; then
         local config_file
-        config_file=$(grep -o '--config=\./[^ ]*' /opt/ppp/ppp.sh 2>/dev/null | head -1 | sed 's/--config=\.\///')
+        config_file=$(awk -F"--config=./" '{if(NF>1){split($2,a," "); print a[1]}}' /opt/ppp/ppp.sh 2>/dev/null | head -1)
         if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
             cfg="/opt/ppp/$config_file"
         fi
