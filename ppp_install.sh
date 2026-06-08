@@ -715,14 +715,9 @@ client_switch_config() {
     [[ ! "$c" =~ ^[0-9]+$ || "$c" -lt 1 || "$c" -gt ${#js[@]} ]] && { print "❌ 无效" "$RED"; return 1; }
     local s="${js[$((c-1))]}"
 
-    # 仅替换 ppp.sh 中的 --config=./xxx.json 参数，保留原有启动脚本结构
-    if grep -q -- '--config=\./' /opt/ppp/ppp.sh 2>/dev/null; then
-        sed -i "s/--config=\.\/[^'\" ]*/--config=.\/${s}/g" /opt/ppp/ppp.sh
-    else
-        # 如果 ppp.sh 中没有 --config 参数（服务端模式），插入到 ppp 命令中
-        sed -i "s|'\./ppp --mode=client'|'./ppp --mode=client --config=./${s}'|g" /opt/ppp/ppp.sh
-        sed -i "s|'\./ppp --mode=client --config=\./[^'\" ]*'|'./ppp --mode=client --config=./${s}'|g" /opt/ppp/ppp.sh
-    fi
+    # 仅替换 --config= 后的文件名，保留行内所有其他参数
+    # 匹配 --config=./任意文件名 替换为 --config=./新文件名
+    sed -i "s#--config=\./[^'\" ]*#--config=./${s}#g" /opt/ppp/ppp.sh
     print "✅ 已切换配置文件为: ${s}" "$GREEN"
     systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
 }
