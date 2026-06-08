@@ -264,6 +264,11 @@ download_main_binary() {
     if unzip -o "$zip_name" ppp -d . && chmod +x ppp; then
         rm -f "$zip_name"
         print "✅ openppp2 二进制准备完成" "$GREEN"
+        # 替换赋权后自动重启服务
+        if systemctl is-active --quiet ppp.service 2>/dev/null; then
+            print "🔄 正在重启服务..." "$BLUE"
+            systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
+        fi
         return 0
     else
         print "❌ 解压失败" "$RED"
@@ -466,8 +471,6 @@ update_binary_only() {
         print "🔍 原版仓库为静态编译，跳过 libunwind 安装" "$YELLOW"
     fi
     download_main_binary || return 1
-    print "✅ 二进制更新完毕，正在重启服务..." "$GREEN"
-    systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败，请手动执行选项 4" "$YELLOW"
 }
 
 # ==================== 4) 重启服务 ====================
