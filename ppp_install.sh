@@ -555,24 +555,26 @@ bdp_calculate_windows() {
 
 # ==================== 获取当前使用的配置文件路径 ====================
 # 从 ppp.sh 中解析 --config=./xxx.json，回退到 appsettings.json
-# 查找顺序: /opt/ppp/ppp.sh → /opt/ppp/appsettings.json → 脚本同目录下的 json
+# 查找顺序: /opt/ppp/ppp.sh → /opt/ppp/appsettings.json → /opt/ppp 下任意 json
 get_current_config() {
-    local script_dir
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
+    local config_file
 
+    # 1) 从 ppp.sh 中提取 --config=./xxx.json 参数
     if [ -f "/opt/ppp/ppp.sh" ]; then
-        local config_file
-        config_file=$(grep -oP '--config=\./\K[^'\''"]+' /opt/ppp/ppp.sh 2>/dev/null | head -1)
+        config_file=$(grep -o '--config=\./[^ ]*' /opt/ppp/ppp.sh 2>/dev/null | head -1 | sed 's/--config=\.\///')
         if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
             echo "/opt/ppp/$config_file"
             return 0
         fi
     fi
+
+    # 2) 回退到默认 appsettings.json
     [ -f "/opt/ppp/appsettings.json" ] && echo "/opt/ppp/appsettings.json" && return 0
-    # 回退：脚本同目录下的第一个 json 配置文件
-    local local_json
-    local_json=$(find "$script_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null | head -1)
-    [ -n "$local_json" ] && echo "$local_json" && return 0
+
+    # 3) 回退到 /opt/ppp 下任意 json
+    config_file=$(find /opt/ppp -maxdepth 1 -name "*.json" -type f 2>/dev/null | head -1)
+    [ -n "$config_file" ] && echo "$config_file" && return 0
+
     return 1
 }
 
@@ -585,7 +587,7 @@ extract_server_ip() {
     # 1) 从 ppp.sh 中提取 --config=./xxx.json 参数
     if [ -f "/opt/ppp/ppp.sh" ]; then
         local config_file
-        config_file=$(grep -oP '--config=\./\K[^'\''"]+' /opt/ppp/ppp.sh 2>/dev/null | head -1)
+        config_file=$(grep -o '--config=\./[^ ]*' /opt/ppp/ppp.sh 2>/dev/null | head -1 | sed 's/--config=\.\///')
         if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
             cfg="/opt/ppp/$config_file"
         fi
@@ -621,8 +623,7 @@ extract_server_ip() {
 ping_rtt() {
     local ip="$1" avg
     # 发 3 个包，超时 2 秒，取平均
-    avg=$(ping -c 3 -W 2 "$ip" 2>/dev/null | tail -1 | grep -oP '([0-9.]+)(?=/\d+\.\d+/\d+\.\d+)' | head -1)
-    [ -z "$avg" ] && avg=$(ping -c 3 -W 2 "$ip" 2>/dev/null | grep -oP 'rtt min/avg/max/mdev = [0-9.]+/\K[0-9.]+')
+    avg=$(ping -c 3 -W 2 "$ip" 2>/dev/null | tail -1 | sed -n 's/.*rtt min\/avg\/max\/mdev = \([0-9.]*\)\/[0-9.]*\/[0-9.]*\/[0-9.]*.*/\1/p')
     echo "$avg"
 }
 
