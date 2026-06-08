@@ -612,21 +612,15 @@ bdp_calculator() {
     echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT² / 1000"
     echo
 
-    # 自动提取 IP 并 ping（优先从 ppp.sh 当前使用的 config 读取）
-    local detected_ip rtt_ms
-    detected_ip=$(extract_server_ip)
-    if [ -n "$detected_ip" ]; then
-        print "📡 检测到服务器 IP: $detected_ip，正在 Ping 测延迟..." "$BLUE"
-        rtt_ms=$(ping_rtt "$detected_ip")
-        if [ -n "$rtt_ms" ]; then
-            # 取整
-            rtt_ms=$(printf "%.0f" "$rtt_ms" 2>/dev/null || echo "$rtt_ms")
-            print "✅ Ping $detected_ip 延迟: ${rtt_ms}ms" "$GREEN"
-        else
-            print "⚠️ Ping 超时，请手动输入延迟" "$YELLOW"
-        fi
+    # Ping 1.1.1.1 自动测延迟，失败则手动输入
+    local rtt_ms
+    print "📡 正在 Ping 1.1.1.1 测延迟..." "$BLUE"
+    rtt_ms=$(ping_rtt "1.1.1.1")
+    if [ -n "$rtt_ms" ]; then
+        rtt_ms=$(printf "%.0f" "$rtt_ms" 2>/dev/null || echo "$rtt_ms")
+        print "✅ 延迟: ${rtt_ms}ms" "$GREEN"
     else
-        print "⚠️ 未检测到有效服务器配置，请手动输入延迟" "$YELLOW"
+        print "⚠️ Ping 超时，请手动输入延迟" "$YELLOW"
     fi
 
     read -p "带宽 (Mbps，如 100): " BW
