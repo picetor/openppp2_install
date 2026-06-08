@@ -233,7 +233,12 @@ install_deps() {
         print "❌ 无法识别包管理器" "$RED"; return 1
     fi
     command_exists jq && command_exists unzip && command_exists tmux || { print "❌ 依赖安装失败" "$RED"; return 1; }
-    install_libunwind || return 1
+    # 原版 liulilittle 为静态编译，无需 libunwind；仅 Miaocchi 扩展版需要
+    if [ "$REPO_OWNER" = "Miaocchi" ]; then
+        install_libunwind || return 1
+    else
+        print "🔍 原版仓库为静态编译，跳过 libunwind 安装" "$YELLOW"
+    fi
     print "✅ 所有依赖就绪" "$GREEN"
     return 0
 }
@@ -349,7 +354,12 @@ configure_service_only() {
 update_binary_only() {
     select_proxy
     select_repo
-    install_libunwind
+    # 原版 liulilittle 为静态编译，无需 libunwind；仅 Miaocchi 扩展版需要
+    if [ "$REPO_OWNER" = "Miaocchi" ]; then
+        install_libunwind
+    else
+        print "🔍 原版仓库为静态编译，跳过 libunwind 安装" "$YELLOW"
+    fi
     download_main_binary || return 1
     print "✅ 二进制更新完毕，如需生效请重启服务 (选项 4)" "$GREEN"
 }
