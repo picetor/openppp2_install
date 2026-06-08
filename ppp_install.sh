@@ -555,7 +555,11 @@ bdp_calculate_windows() {
 
 # ==================== 获取当前使用的配置文件路径 ====================
 # 从 ppp.sh 中解析 --config=./xxx.json，回退到 appsettings.json
+# 查找顺序: /opt/ppp/ppp.sh → /opt/ppp/appsettings.json → 脚本同目录下的 json
 get_current_config() {
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
+
     if [ -f "/opt/ppp/ppp.sh" ]; then
         local config_file
         config_file=$(grep -oP '--config=\./\K[^'\''"]+' /opt/ppp/ppp.sh 2>/dev/null | head -1)
@@ -565,6 +569,10 @@ get_current_config() {
         fi
     fi
     [ -f "/opt/ppp/appsettings.json" ] && echo "/opt/ppp/appsettings.json" && return 0
+    # 回退：脚本同目录下的第一个 json 配置文件
+    local local_json
+    local_json=$(find "$script_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null | head -1)
+    [ -n "$local_json" ] && echo "$local_json" && return 0
     return 1
 }
 
@@ -707,29 +715,14 @@ client_switch_config() {
     [[ ! "$c" =~ ^[0-9]+$ || "$c" -lt 1 || "$c" -gt ${#js[@]} ]] && { print "❌ 无效" "$RED"; return 1; }
     local s="${js[$((c-1))]}"
 
-    # 直接重写 ppp.sh 为客户端模式，避免 sed 匹配问题
-    cat > /opt/ppp/ppp.sh << EOF
-#!/bin/bash
-# openppp2 启动脚本（客户端模式）- 由选项 2.3 自动生成
-cd /opt/ppp
-
-tmux kill-session -t ppp 2>/dev/null
-
-tmux new-session -d -s ppp './ppp --mode=client --config=./${s}'
-
-sleep 1
-
-echo "ppp 已在 tmux 会话中启动"
-echo "查看界面: tmux attach -t ppp"
-echo "退出界面: Ctrl+B 然后按 D"
-
-while tmux has-session -t ppp 2>/dev/null; do
-    sleep 5
-done
-
-echo "ppp 会话已结束，脚本退出"
-EOF
-    chmod +x /opt/ppp/ppp.sh
+    # 仅替换 ppp.sh 中的 --config=./xxx.json 参数，保留原有启动脚本结构
+    if grep -q -- '--config=\./' /opt/ppp/ppp.sh 2>/dev/null; then
+        sed -i "s/--config=\.\/[^'\" ]*/--config=.\/${s}/g" /opt/ppp/ppp.sh
+    else
+        # 如果 ppp.sh 中没有 --config 参数（服务端模式），插入到 ppp 命令中
+        sed -i "s|'\./ppp --mode=client'|'./ppp --mode=client --config=./${s}'|g" /opt/ppp/ppp.sh
+        sed -i "s|'\./ppp --mode=client --config=\./[^'\" ]*'|'./ppp --mode=client --config=./${s}'|g" /opt/ppp/ppp.sh
+    fi
     print "✅ 已切换配置文件为: ${s}" "$GREEN"
     systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
 }
