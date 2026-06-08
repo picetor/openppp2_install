@@ -466,7 +466,8 @@ update_binary_only() {
         print "🔍 原版仓库为静态编译，跳过 libunwind 安装" "$YELLOW"
     fi
     download_main_binary || return 1
-    print "✅ 二进制更新完毕，如需生效请重启服务 (选项 4)" "$GREEN"
+    print "✅ 二进制更新完毕，正在重启服务..." "$GREEN"
+    systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败，请手动执行选项 4" "$YELLOW"
 }
 
 # ==================== 4) 重启服务 ====================
@@ -551,22 +552,41 @@ bdp_calculate_windows() {
     echo "$window_pow"
 }
 
-# ==================== 从 appsettings.json 提取服务器 IP ====================
+# ==================== 从当前运行的配置提取服务器 IP ====================
+# 优先从 ppp.sh 中读取 --config=./xxx.json 确定当前使用的配置文件
+# 回退到 appsettings.json
 extract_server_ip() {
-    local cfg="/opt/ppp/appsettings.json"
+    local cfg server_url ip_only
+
+    # 1) 从 ppp.sh 中提取 --config=./xxx.json 参数
+    if [ -f "/opt/ppp/ppp.sh" ]; then
+        local config_file
+        config_file=$(grep -oP '--config=\./\K[^'\''"]+' /opt/ppp/ppp.sh 2>/dev/null | head -1)
+        if [ -n "$config_file" ] && [ -f "/opt/ppp/$config_file" ]; then
+            cfg="/opt/ppp/$config_file"
+        fi
+    fi
+
+    # 2) 回退到默认 appsettings.json
+    if [ -z "$cfg" ] || [ ! -f "$cfg" ]; then
+        cfg="/opt/ppp/appsettings.json"
+    fi
+
     [ ! -f "$cfg" ] && return 1
+
     # 提取 ppp://ip:port 中的 IP
-    local server_url
     server_url=$(jq -r '.client.server // empty' "$cfg" 2>/dev/null)
     [ -z "$server_url" ] && return 1
+
     # 去掉 ppp:// 前缀，取 : 之前的部分
-    local ip_only
     ip_only="${server_url#ppp://}"
     ip_only="${ip_only%%:*}"
+
     # 排除 0.0.0.0 和 :: 等通配地址
     [ "$ip_only" = "0.0.0.0" ] && return 1
     [ "$ip_only" = "::" ] && return 1
     [ "$ip_only" = "*" ] && return 1
+
     echo "$ip_only"
     return 0
 }
@@ -582,14 +602,14 @@ ping_rtt() {
     echo "$avg"
 }
 
-# ==================== 10) BDP 窗口计算器 ====================
+# ==================== 2.4) BDP 窗口计算器 ====================
 bdp_calculator() {
     print "📐 BDP 窗口计算器" "$BLUE"
     echo "根据带宽和延迟计算最优 RWND/CWND 值"
     echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT² / 1000"
     echo
 
-    # 自动提取 IP 并 ping
+    # 自动提取 IP 并 ping（优先从 ppp.sh 当前使用的 config 读取）
     local detected_ip rtt_ms
     detected_ip=$(extract_server_ip)
     if [ -n "$detected_ip" ]; then
@@ -674,7 +694,7 @@ client_switch_config() {
     # 直接重写 ppp.sh 为客户端模式，避免 sed 匹配问题
     cat > /opt/ppp/ppp.sh << EOF
 #!/bin/bash
-# openppp2 启动脚本（客户端模式）- 由选项 9 自动生成
+# openppp2 启动脚本（客户端模式）- 由选项 2.3 自动生成
 cd /opt/ppp
 
 tmux kill-session -t ppp 2>/dev/null
@@ -710,6 +730,7 @@ while true; do
     echo "2.1) 完整自动安装"
     echo "2.2) 仅配置系统服务"
     echo "2.3) 切换配置文件"
+    echo "2.4) BDP 窗口计算器"
     echo "----- 通用 -----"
     echo "3)  更新二进制文件"
     echo "4)  重启服务"
@@ -717,8 +738,7 @@ while true; do
     echo "6)  查看运行状态 (tmux 界面，Ctrl+B D 退出)"
     echo "7)  完全卸载"
     echo "8)  更新本脚本"
-    echo "9)  BDP 窗口计算器（根据带宽/延迟算 RWND/CWND）"
-    echo "10) 退出"
+    echo "9)  退出"
     read -p "请输入选项: " OPERATION
     case "$OPERATION" in
         1.1|11) server_install ;;
@@ -726,14 +746,14 @@ while true; do
         2.1|21) client_install ;;
         2.2|22) client_configure_service ;;
         2.3|23) client_switch_config ;;
+        2.4|24) bdp_calculator ;;
         3) update_binary_only ;;
         4) restart_service ;;
         5) stop_service ;;
         6) show_status ;;
         7) uninstall_ppp ;;
         8) update_script ;;
-        9) bdp_calculator ;;
-        10) print "👋 退出" "$GREEN"; exit 0 ;;
+        9) print "👋 退出" "$GREEN"; exit 0 ;;
         *) print "❌ 无效选项" "$RED" ;;
     esac
     echo; read -p "按 Enter 键返回主菜单..."
