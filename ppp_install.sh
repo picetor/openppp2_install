@@ -675,29 +675,35 @@ bdp_calculator() {
     echo
     print "💡 值取 2 的幂次可享受缓存行优化" "$YELLOW"
 
-    # 写入当前使用的配置文件
+    # 选择档位并写入当前使用的配置文件
     local target_cfg
     target_cfg=$(get_current_config)
     if [ -n "$target_cfg" ]; then
-        local cfg_name
+        local cfg_name cwnd_val rwnd_val
         cfg_name=$(basename "$target_cfg")
-        read -p "是否将均衡配置写入 ${cfg_name}？(y/n): " WRITE
-        if [[ "$WRITE" =~ ^[Yy]$ ]]; then
-            local cfg_dir
-            cfg_dir=$(dirname "$target_cfg")
-            cd "$cfg_dir" || return 1
-            cp -f "$cfg_name" "${cfg_name}.bak" 2>/dev/null
-            jq --indent 4 \
-                --arg cwnd "$window_pow" \
-                --arg rwnd "$((window_pow * 2))" '
-                .udp.cwnd = ($cwnd|tonumber) |
-                .udp.rwnd = ($rwnd|tonumber)
-            ' "$cfg_name" > temp.json && mv temp.json "$cfg_name" && {
-                print "✅ 配置已写入 ${cfg_name}，请重启服务生效" "$GREEN"
-            } || {
-                print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
-            }
-        fi
+        echo
+        echo "1) 保守: CWND=$((window_pow / 2))  RWND=$window_pow"
+        echo "2) 均衡: CWND=$window_pow  RWND=$((window_pow * 2))"
+        echo "3) 激进: CWND=$((window_pow * 2))  RWND=$((window_pow * 4))"
+        read -p "选择要写入的档位 [1-3]（默认 2 均衡）: " TIER
+        case "$TIER" in
+            1) cwnd_val=$((window_pow / 2)); rwnd_val=$window_pow ;;
+            3) cwnd_val=$((window_pow * 2)); rwnd_val=$((window_pow * 4)) ;;
+            *) cwnd_val=$window_pow; rwnd_val=$((window_pow * 2)) ;;
+        esac
+        local cfg_dir
+        cfg_dir=$(dirname "$target_cfg")
+        cd "$cfg_dir" || return 1
+        jq --indent 4 \
+            --arg cwnd "$cwnd_val" \
+            --arg rwnd "$rwnd_val" '
+            .udp.cwnd = ($cwnd|tonumber) |
+            .udp.rwnd = ($rwnd|tonumber)
+        ' "$cfg_name" > temp.json && mv temp.json "$cfg_name" && {
+            print "✅ ${cfg_name} 已更新: CWND=$cwnd_val, RWND=$rwnd_val，请重启服务生效" "$GREEN"
+        } || {
+            print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
+        }
     else
         print "⚠️ 未找到配置文件，跳过写入" "$YELLOW"
     fi
