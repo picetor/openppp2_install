@@ -700,7 +700,8 @@ bdp_calculator() {
             .udp.cwnd = ($cwnd|tonumber) |
             .udp.rwnd = ($rwnd|tonumber)
         ' "$cfg_name" > temp.json && mv temp.json "$cfg_name" && {
-            print "✅ ${cfg_name} 已更新: CWND=$cwnd_val, RWND=$rwnd_val，请重启服务生效" "$GREEN"
+            print "✅ ${cfg_name} 已更新: CWND=$cwnd_val, RWND=$rwnd_val" "$GREEN"
+            systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
         } || {
             print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
         }
