@@ -354,6 +354,45 @@ server_install() {
         print "❌ 配置修改失败" "$RED"; rm -f temp.json; return 1
     }
 
+    # BDP 窗口优化（自动 ping 检测延迟）
+    read -p "是否根据带宽优化 RWND/CWND 窗口？(y/n): " OPT_BDP
+    if [[ "$OPT_BDP" =~ ^[Yy]$ ]]; then
+        local detected_ip rtt_ms bw window_pow
+        detected_ip=$(extract_server_ip)
+        if [ -n "$detected_ip" ]; then
+            print "📡 检测到服务器 IP: $detected_ip，正在 Ping 测延迟..." "$BLUE"
+            rtt_ms=$(ping_rtt "$detected_ip")
+            if [ -n "$rtt_ms" ]; then
+                rtt_ms=$(printf "%.0f" "$rtt_ms" 2>/dev/null || echo "$rtt_ms")
+                print "✅ Ping $detected_ip 延迟: ${rtt_ms}ms" "$GREEN"
+            else
+                print "⚠️ Ping 超时，请手动输入延迟" "$YELLOW"
+            fi
+        fi
+        read -p "带宽 (Mbps，如 100): " bw
+        if [[ "$bw" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            if [ -z "$rtt_ms" ]; then
+                read -p "延迟 RTT (ms，如 63): " rtt_ms
+            fi
+            if [[ "$rtt_ms" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                window_pow=$(bdp_calculate_windows "$bw" "$rtt_ms")
+                jq --indent 4 \
+                    --arg cwnd "$window_pow" \
+                    --arg rwnd "$((window_pow * 2))" '
+                    .tcp.cwnd = ($cwnd|tonumber) |
+                    .tcp.rwnd = ($rwnd|tonumber) |
+                    .udp.cwnd = ($cwnd|tonumber) |
+                    .udp.rwnd = ($rwnd|tonumber)
+                ' appsettings.json > temp.json && mv temp.json appsettings.json
+                print "✅ BDP 优化已应用: CWND=$window_pow, RWND=$((window_pow * 2))" "$GREEN"
+            else
+                print "⚠️ 延迟无效，跳过 BDP 优化" "$YELLOW"
+            fi
+        else
+            print "⚠️ 带宽无效，跳过 BDP 优化" "$YELLOW"
+        fi
+    fi
+
     setup_systemd_service || return 1
 
     if systemctl is-active --quiet ppp.service; then
@@ -484,6 +523,141 @@ update_script() {
     wget -4 -O /root/ppp_install.sh "$url" && chmod +x /root/ppp_install.sh && { print "✅ 更新成功" "$GREEN"; exec /root/ppp_install.sh; } || print "❌ 更新失败" "$RED"
 }
 
+# ==================== 10) BDP 窗口计算器 ====================
+# BDP = 带宽(bps) / 8 * RTT(秒)
+# 窗口 = BDP / (MSS) ，取 2 的幂次
+# ==================== BDP 计算核心 ====================
+# 参数: $1=带宽(Mbps) $2=RTT(ms)
+# 输出: window_pow (CWND 推荐值，2 的幂次)
+bdp_calculate_windows() {
+    local bw="$1" rtt_ms="$2"
+    local bw_bps rtt_sec flight_bytes window_raw window_pow
+
+    bw_bps=$(echo "$bw * 1000000" | bc 2>/dev/null)
+    [ $? -ne 0 ] && bw_bps=$((bw * 1000000))
+
+    rtt_sec=$(echo "scale=3; $rtt_ms / 1000" | bc 2>/dev/null || echo "0.$rtt_ms")
+
+    flight_bytes=$(echo "scale=0; $bw_bps / 8 * $rtt_sec" | bc 2>/dev/null || echo "$((bw_bps / 8 * rtt_ms / 1000))")
+
+    window_raw=$(echo "scale=0; $flight_bytes * $rtt_ms / 1000" | bc 2>/dev/null || echo "$((flight_bytes * rtt_ms / 1000))")
+    [ "$window_raw" -lt 1 ] && window_raw=65536
+
+    window_pow=1
+    while [ $window_pow -lt $window_raw ]; do
+        window_pow=$((window_pow << 1))
+    done
+
+    echo "$window_pow"
+}
+
+# ==================== 从 appsettings.json 提取服务器 IP ====================
+extract_server_ip() {
+    local cfg="/opt/ppp/appsettings.json"
+    [ ! -f "$cfg" ] && return 1
+    # 提取 ppp://ip:port 中的 IP
+    local server_url
+    server_url=$(jq -r '.client.server // empty' "$cfg" 2>/dev/null)
+    [ -z "$server_url" ] && return 1
+    # 去掉 ppp:// 前缀，取 : 之前的部分
+    local ip_only
+    ip_only="${server_url#ppp://}"
+    ip_only="${ip_only%%:*}"
+    # 排除 0.0.0.0 和 :: 等通配地址
+    [ "$ip_only" = "0.0.0.0" ] && return 1
+    [ "$ip_only" = "::" ] && return 1
+    [ "$ip_only" = "*" ] && return 1
+    echo "$ip_only"
+    return 0
+}
+
+# ==================== Ping 测延迟 ====================
+# 参数: $1=IP 地址
+# 输出: 平均延迟(ms)，失败返回空
+ping_rtt() {
+    local ip="$1" avg
+    # 发 3 个包，超时 2 秒，取平均
+    avg=$(ping -c 3 -W 2 "$ip" 2>/dev/null | tail -1 | grep -oP '([0-9.]+)(?=/\d+\.\d+/\d+\.\d+)' | head -1)
+    [ -z "$avg" ] && avg=$(ping -c 3 -W 2 "$ip" 2>/dev/null | grep -oP 'rtt min/avg/max/mdev = [0-9.]+/\K[0-9.]+')
+    echo "$avg"
+}
+
+# ==================== 10) BDP 窗口计算器 ====================
+bdp_calculator() {
+    print "📐 BDP 窗口计算器" "$BLUE"
+    echo "根据带宽和延迟计算最优 RWND/CWND 值"
+    echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT² / 1000"
+    echo
+
+    # 自动提取 IP 并 ping
+    local detected_ip rtt_ms
+    detected_ip=$(extract_server_ip)
+    if [ -n "$detected_ip" ]; then
+        print "📡 检测到服务器 IP: $detected_ip，正在 Ping 测延迟..." "$BLUE"
+        rtt_ms=$(ping_rtt "$detected_ip")
+        if [ -n "$rtt_ms" ]; then
+            # 取整
+            rtt_ms=$(printf "%.0f" "$rtt_ms" 2>/dev/null || echo "$rtt_ms")
+            print "✅ Ping $detected_ip 延迟: ${rtt_ms}ms" "$GREEN"
+        else
+            print "⚠️ Ping 超时，请手动输入延迟" "$YELLOW"
+        fi
+    else
+        print "⚠️ 未检测到有效服务器配置，请手动输入延迟" "$YELLOW"
+    fi
+
+    read -p "带宽 (Mbps，如 100): " BW
+    [[ ! "$BW" =~ ^[0-9]+(\.[0-9]+)?$ ]] && { print "❌ 带宽必须为数字" "$RED"; return 1; }
+
+    if [ -z "$rtt_ms" ]; then
+        read -p "延迟 RTT (ms，如 63): " RTT_MS
+        [[ ! "$RTT_MS" =~ ^[0-9]+(\.[0-9]+)?$ ]] && { print "❌ 延迟必须为数字" "$RED"; return 1; }
+    else
+        RTT_MS=$rtt_ms
+        echo "延迟 RTT: ${RTT_MS}ms (自动检测)"
+    fi
+
+    local window_pow window_kb window_mb
+    window_pow=$(bdp_calculate_windows "$BW" "$RTT_MS")
+    window_kb=$((window_pow / 1024))
+    window_mb=$(echo "scale=2; $window_pow / 1048576" | bc 2>/dev/null || echo "$((window_pow / 1048576))")
+
+    echo
+    print "========== 计算结果 ==========" "$GREEN"
+    echo "带宽:       ${BW} Mbps"
+    echo "RTT:        ${RTT_MS} ms"
+    echo "--------------------------------"
+    echo "推荐 CWND:  $window_pow 字节 (${window_kb}K / ${window_mb}M)"
+    echo "推荐 RWND:  $((window_pow * 2)) 字节 ($((window_kb * 2))K / $(echo "scale=2; $window_pow * 2 / 1048576" | bc 2>/dev/null)M)"
+    echo "--------------------------------"
+    echo "保守:       CWND=$((window_pow / 2))  RWND=$window_pow"
+    echo "均衡:       CWND=$window_pow  RWND=$((window_pow * 2))"
+    echo "激进:       CWND=$((window_pow * 2))  RWND=$((window_pow * 4))"
+    echo
+    print "💡 值取 2 的幂次可享受缓存行优化" "$YELLOW"
+
+    # 询问是否写入现有配置
+    if [ -f "/opt/ppp/appsettings.json" ]; then
+        read -p "是否将均衡配置写入 /opt/ppp/appsettings.json？(y/n): " WRITE
+        if [[ "$WRITE" =~ ^[Yy]$ ]]; then
+            cd /opt/ppp || return 1
+            cp -f appsettings.json appsettings.json.bak 2>/dev/null
+            jq --indent 4 \
+                --arg cwnd "$window_pow" \
+                --arg rwnd "$((window_pow * 2))" '
+                .tcp.cwnd = ($cwnd|tonumber) |
+                .tcp.rwnd = ($rwnd|tonumber) |
+                .udp.cwnd = ($cwnd|tonumber) |
+                .udp.rwnd = ($rwnd|tonumber)
+            ' appsettings.json > temp.json && mv temp.json appsettings.json && {
+                print "✅ 配置已写入，请重启服务生效" "$GREEN"
+            } || {
+                print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
+            }
+        fi
+    fi
+}
+
 # ==================== 2.3) 客户端 - 切换配置文件 ====================
 client_switch_config() {
     print "🔧 客户端模式 - 切换配置文件" "$BLUE"
@@ -543,7 +717,8 @@ while true; do
     echo "6)  查看运行状态 (tmux 界面，Ctrl+B D 退出)"
     echo "7)  完全卸载"
     echo "8)  更新本脚本"
-    echo "9)  退出"
+    echo "9)  BDP 窗口计算器（根据带宽/延迟算 RWND/CWND）"
+    echo "10) 退出"
     read -p "请输入选项: " OPERATION
     case "$OPERATION" in
         1.1|11) server_install ;;
@@ -557,7 +732,8 @@ while true; do
         6) show_status ;;
         7) uninstall_ppp ;;
         8) update_script ;;
-        9) print "👋 退出" "$GREEN"; exit 0 ;;
+        9) bdp_calculator ;;
+        10) print "👋 退出" "$GREEN"; exit 0 ;;
         *) print "❌ 无效选项" "$RED" ;;
     esac
     echo; read -p "按 Enter 键返回主菜单..."
