@@ -525,24 +525,22 @@ update_script() {
     wget -4 -O /root/ppp_install.sh "$url" && chmod +x /root/ppp_install.sh && { print "✅ 更新成功" "$GREEN"; exec /root/ppp_install.sh; } || print "❌ 更新失败" "$RED"
 }
 
-# ==================== 10) BDP 窗口计算器 ====================
-# BDP = 带宽(bps) / 8 * RTT(秒)
-# 窗口 = BDP / (MSS) ，取 2 的幂次
+# ==================== 2.4) BDP 窗口计算器 ====================
+# 公式: 窗口 = 带宽(bps) / 8 / (1000/RTT) = 带宽(bps) / 8 * RTT / 1000
+# 取 2 的幂次以享受缓存行优化
 # ==================== BDP 计算核心 ====================
 # 参数: $1=带宽(Mbps) $2=RTT(ms)
+# 公式: 窗口 = 带宽(bps) / 8 / (1000/RTT) = 带宽(bps) / 8 * RTT / 1000
 # 输出: window_pow (CWND 推荐值，2 的幂次)
 bdp_calculate_windows() {
     local bw="$1" rtt_ms="$2"
-    local bw_bps rtt_sec flight_bytes window_raw window_pow
+    local bw_bps window_raw window_pow
 
     bw_bps=$(echo "$bw * 1000000" | bc 2>/dev/null)
     [ $? -ne 0 ] && bw_bps=$((bw * 1000000))
 
-    rtt_sec=$(echo "scale=3; $rtt_ms / 1000" | bc 2>/dev/null || echo "0.$rtt_ms")
-
-    flight_bytes=$(echo "scale=0; $bw_bps / 8 * $rtt_sec" | bc 2>/dev/null || echo "$((bw_bps / 8 * rtt_ms / 1000))")
-
-    window_raw=$(echo "scale=0; $flight_bytes * $rtt_ms / 1000" | bc 2>/dev/null || echo "$((flight_bytes * rtt_ms / 1000))")
+    # 窗口 = 带宽(bps) / 8 * RTT(ms) / 1000
+    window_raw=$(echo "scale=0; $bw_bps / 8 * $rtt_ms / 1000" | bc 2>/dev/null || echo "$((bw_bps / 8 * rtt_ms / 1000))")
     [ "$window_raw" -lt 1 ] && window_raw=65536
 
     window_pow=1
