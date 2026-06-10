@@ -728,6 +728,47 @@ client_switch_config() {
     systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
 }
 
+# ==================== 2.5) 客户端 - 修改 GUID ====================
+client_modify_guid() {
+    print "🔧 客户端模式 - 修改 GUID" "$BLUE"
+    local target_cfg cfg_name
+    target_cfg=$(get_current_config)
+    if [ -z "$target_cfg" ] || [ ! -f "$target_cfg" ]; then
+        print "❌ 未找到当前运行的配置文件" "$RED"
+        return 1
+    fi
+    cfg_name=$(basename "$target_cfg")
+
+    local current_guid
+    current_guid=$(jq -r '.client.guid // empty' "$target_cfg" 2>/dev/null)
+    if [ -n "$current_guid" ]; then
+        print "当前 GUID: $current_guid" "$BLUE"
+    fi
+
+    read -p "输入新 GUID（留空自动生成）: " NEW_GUID
+    if [ -z "$NEW_GUID" ]; then
+        NEW_GUID=$(tr -dc 'a-zA-Z0-9' </dev/urandom 2>/dev/null | head -c 16)
+        if [ -z "$NEW_GUID" ]; then
+            NEW_GUID=$(date +%s | md5sum | head -c 16)
+        fi
+        print "自动生成 GUID: $NEW_GUID" "$GREEN"
+    fi
+
+    local cfg_dir
+    cfg_dir=$(dirname "$target_cfg")
+    cd "$cfg_dir" || return 1
+
+    jq --indent 4 \
+        --arg guid "$NEW_GUID" '
+        .client.guid = $guid
+    ' "$cfg_name" > temp.json && mv temp.json "$cfg_name" && {
+        print "✅ ${cfg_name} GUID 已更新为: $NEW_GUID" "$GREEN"
+        systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
+    } || {
+        print "❌ 写入失败" "$RED"; rm -f temp.json; return 1
+    }
+}
+
 # ==================== 主菜单 ====================
 create_ppp_shortcut
 while true; do
@@ -741,6 +782,7 @@ while true; do
     echo "2.2) 仅配置系统服务"
     echo "2.3) 切换配置文件"
     echo "2.4) BDP 窗口计算器"
+    echo "2.5) 修改 GUID"
     echo "----- 通用 -----"
     echo "3)  更新二进制文件"
     echo "4)  重启服务"
@@ -757,6 +799,7 @@ while true; do
         2.2|22) client_configure_service ;;
         2.3|23) client_switch_config ;;
         2.4|24) bdp_calculator ;;
+        2.5|25) client_modify_guid ;;
         3) update_binary_only ;;
         4) restart_service ;;
         5) stop_service ;;
