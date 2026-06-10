@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# openppp2 一键安装脚本（v4.5 服务端/客户端双模式 + tmux 管理）
+# openppp2 一键安装脚本（v4.7 服务端/客户端双模式 + tmux 管理）
 # - liulilittle: 全兼容，按特性自动选择最佳版本
 # - Miaocchi: 低 glibc 系统自动选 debian10 包，高版本按特性选择
 # - 纯 bash glibc 检测（无 bc 依赖）
@@ -816,7 +816,7 @@ client_modify_guid() {
 create_ppp_shortcut
 while true; do
     clear
-    print "=============== openppp2 一键脚本（v4.5 服务端/客户端 + tmux 管理）===============" "$BLUE"
+    print "=============== openppp2 一键脚本（v4.7 服务端/客户端 + tmux 管理）===============" "$BLUE"
     echo "----- 服务端 -----"
     echo "1.1) 完整自动安装"
     echo "1.2) 仅配置系统服务"
