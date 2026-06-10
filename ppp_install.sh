@@ -745,11 +745,14 @@ client_modify_guid() {
         print "当前 GUID: $current_guid" "$BLUE"
     fi
 
-    read -p "输入新 GUID（留空自动生成）: " NEW_GUID
+    read -p "输入新 GUID（留空自动生成 UUID）: " NEW_GUID
     if [ -z "$NEW_GUID" ]; then
-        NEW_GUID=$(tr -dc 'a-zA-Z0-9' </dev/urandom 2>/dev/null | head -c 16)
+        NEW_GUID=$(uuidgen 2>/dev/null)
         if [ -z "$NEW_GUID" ]; then
-            NEW_GUID=$(date +%s | md5sum | head -c 16)
+            NEW_GUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null)
+        fi
+        if [ -z "$NEW_GUID" ]; then
+            NEW_GUID=$(date +%s | md5sum | head -c 36)
         fi
         print "自动生成 GUID: $NEW_GUID" "$GREEN"
     fi
