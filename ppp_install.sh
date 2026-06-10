@@ -20,12 +20,52 @@ create_ppp_shortcut() {
     if [ ! -f "/usr/local/bin/ppp" ]; then
         cat > /usr/local/bin/ppp << 'EOF'
 #!/bin/bash
+
+# 自动更新脚本：先尝试直连 GitHub（IPv4），失败则走国内加速代理
+SCRIPT_URL="https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
+PROXY_URL="https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
+
 if [ -f "/root/ppp_install.sh" ]; then
-    bash /root/ppp_install.sh
+    echo "🔄 正在检查脚本更新..." >&2
+    # 步骤 1: 直连 GitHub（IPv4）
+    wget -4 --no-check-certificate -q --show-progress -O /root/ppp_install.sh.tmp "$SCRIPT_URL" 2>/dev/null
+    if [ $? -eq 0 ] && [ -s /root/ppp_install.sh.tmp ]; then
+        mv /root/ppp_install.sh.tmp /root/ppp_install.sh
+        chmod +x /root/ppp_install.sh
+        echo "✅ 脚本已更新（直连 GitHub）" >&2
+    else
+        rm -f /root/ppp_install.sh.tmp
+        # 步骤 2: 国内加速代理
+        wget -4 --no-check-certificate -q --show-progress -O /root/ppp_install.sh.tmp "$PROXY_URL" 2>/dev/null
+        if [ $? -eq 0 ] && [ -s /root/ppp_install.sh.tmp ]; then
+            mv /root/ppp_install.sh.tmp /root/ppp_install.sh
+            chmod +x /root/ppp_install.sh
+            echo "✅ 脚本已更新（国内加速）" >&2
+        else
+            rm -f /root/ppp_install.sh.tmp
+            echo "⚠️ 检查更新失败，使用本地版本" >&2
+        fi
+    fi
+    exec bash /root/ppp_install.sh
 else
-    echo "❌ 脚本文件不存在，请重新下载"
-    echo "wget -4 -O /root/ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh"
-    echo "chmod +x /root/ppp_install.sh"
+    echo "❌ 脚本文件不存在，正在下载..." >&2
+    # 尝试直连下载
+    wget -4 --no-check-certificate -q --show-progress -O /root/ppp_install.sh "$SCRIPT_URL" 2>/dev/null
+    if [ $? -ne 0 ] || [ ! -s /root/ppp_install.sh ]; then
+        rm -f /root/ppp_install.sh
+        # 尝试国内加速下载
+        wget -4 --no-check-certificate -q --show-progress -O /root/ppp_install.sh "$PROXY_URL" 2>/dev/null
+    fi
+    if [ -s /root/ppp_install.sh ]; then
+        chmod +x /root/ppp_install.sh
+        echo "✅ 下载成功" >&2
+        exec bash /root/ppp_install.sh
+    else
+        echo "❌ 下载失败，请手动下载脚本" >&2
+        echo "wget -4 -O /root/ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh" >&2
+        echo "chmod +x /root/ppp_install.sh" >&2
+        exit 1
+    fi
 fi
 EOF
         chmod +x /usr/local/bin/ppp
