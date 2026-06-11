@@ -631,7 +631,7 @@ ping_rtt() {
 bdp_calculator() {
     print "📐 BDP 窗口计算器" "$BLUE"
     echo "根据带宽和延迟计算最优 RWND/CWND 值"
-    echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT² / 1000"
+    echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT(ms) / 1000"
     echo
 
     # Ping 1.1.1.1 自动测延迟，失败则手动输入
