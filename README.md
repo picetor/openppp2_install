@@ -1,137 +1,128 @@
-# openppp2 一键安装脚本
-> 双仓库智能适配 + tmux 管理 | 支持多架构、低 glibc 兼容
-本脚本用于**一键安装、配置、管理** [openppp2](https://github.com/liulilittle/openppp2) 高性能隧道程序。  
-支持服务端/客户端模式，自动选择最优二进制版本，并提供 systemd + tmux 进程管理。
-## 📦 项目作用
-openppp2 是一个**高性能点对点 PPP 隧道实现**，支持 TCP/UDP 多路复用、加密传输、流量整形等特性。  
-本脚本封装了完整的部署流程，使普通用户也能轻松搭建：
-- **服务端**：监听公网端口，接收客户端连接
-- **客户端**：连接服务端，建立安全隧道
-典型场景：内网穿透、异地组网、网络加速。
-## 🖥️ 适用范围
-- **操作系统**：Linux (Debian/Ubuntu/CentOS/RHEL/Fedora 等)
-- **CPU 架构**：`x86_64`、`aarch64`、`armv7l`、`mipsel`、`ppc64le`、`riscv64`、`s390x`
-- **环境要求**：glibc ≥ 2.17（低版本自动选用 debian10 兼容包）
-- **网络**：IPv4 公网/内网均可（建议开放监听端口）
-## 📥 安装的软件
-通过本脚本会自动安装以下组件：
-| 软件 | 用途 |
+Optimized tool selection这是一个 **`openppp2` 的一键安装与管理脚本**（版本 v4.7），支持**服务端**和**客户端**两种模式，内置智能版本选择、系统服务管理和 TUI 状态查看。以下是详细的功能分析：
+
+---
+
+## 一、脚本概述
+
+- **用途**：自动化部署、配置、管理 `openppp2`（一个隧道VPN工具）
+- **运行环境**：Linux（支持多种架构）
+- **管理方式**：`systemd` 系统服务 + `tmux` 会话管理
+- **双仓库支持**：可在 `liulilittle/openppp2`（原版，静态编译）和 `Miaocchi/openppp2`（扩展版）之间选择
+
+---
+
+## 二、核心功能模块
+
+### 1. 快捷命令创建 (`create_ppp_shortcut`)
+在 `/usr/local/bin/ppp` 创建一个快捷命令，以后只需输入 `ppp` 即可重新运行此安装脚本。
+
+### 2. 系统检测
+脚本会自动检测系统硬件/软件特性，以选择最佳的二进制版本：
+- **`has_aesni()`**：CPU 是否支持 AES-NI 指令集
+- **`kernel_supports_io_uring()`**：内核是否 ≥ 5.10（支持 io_uring 异步 I/O）
+- **`has_tc()`**：系统是否安装了 `tc`（Traffic Control，流量控制工具）
+- **`glibc_lt_238()`**：检测 glibc 版本是否低于 2.38（用于 Miaocchi 版选择兼容包）
+
+### 3. 智能版本选择 (`choose_best_zip`)
+根据 CPU 架构和系统特性，从 GitHub Releases 下载最优版本：
+- **x86_64**：按特性组合选择（`tc`、`io-uring`、`simd` 等后缀）
+- **aarch64 / armv7l / mips / ppc64le / riscv64 / s390x**：均有对应架构包
+- **Miaocchi 仓库**：在低 glibc 系统上自动选择 `debian10` 兼容包
+
+### 4. 依赖安装 (`install_deps`)
+自动安装：
+- `jq`（JSON 处理）
+- `uuid-runtime` 或 `util-linux`（UUID 生成）
+- `unzip`（解压）
+- `tmux`（终端复用，用于状态查看）
+
+### 5. 代理选择 (`select_proxy`)
+支持国内用户通过 `https://git.apad.pro/` 代理加速下载 GitHub 资源。
+
+---
+
+## 三、主菜单选项详解
+
+### 服务端功能
+| 选项 | 功能 |
 |------|------|
-| openppp2 | 主程序（从 GitHub Release 下载） |
-| libunwind8 | 运行时库（必须） |
-| tmux | 终端复用器，用于查看运行状态 |
-| jq | JSON 配置文件修改 |
-| uuid-runtime | 生成 GUID |
-| unzip | 解压二进制包 |
-| wget | 下载文件 |
-同时会创建 systemd 服务 `/etc/systemd/system/ppp.service` 和快捷命令 `/usr/local/bin/ppp`。
-## 📚 来源仓库
-本脚本支持两个 openppp2 仓库，安装时可手动选择：
-- **[liulilittle/openppp2](https://github.com/liulilittle/openppp2)**（原版，全兼容，按特性自动选择最佳二进制）
-- **[Miaocchi/openppp2](https://github.com/Miaocchi/openppp2)**（扩展版，低 glibc 系统自动选用 debian10 包）
-脚本自身维护仓库：[picetor/openppp2_install](https://github.com/picetor/openppp2_install)
-## 🚀 一键安装命令
-### 直连 GitHub（海外服务器或网络良好）
-```bash
-wget -4 -O ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
-```
-### 使用国内加速（大陆服务器）
+| **1.1 完整自动安装** | 从 0 开始：选代理 → 选仓库 → 装依赖 → 下载二进制 → 下载启动脚本 → 配置 `appsettings.json`（IP/端口/GUID/密钥）→ 可选 BDP 优化 → 创建 systemd 服务并启动 |
+| **1.2 仅配置系统服务** | 在已有 `appsettings.json` 和 `ppp` 二进制的情况下，只下载启动脚本并配置 systemd 服务 |
 
-```bash
-wget -4 -O ppp_install.sh https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
-```
+### 客户端功能
+| 选项 | 功能 |
+|------|------|
+| **2.1 完整自动安装** | 安装二进制和客户端启动脚本 (`client.sh`)，提示用户放入 JSON 配置文件后配置服务 |
+| **2.2 仅配置系统服务** | 在已有二进制的情况下，只配置客户端服务和启动脚本 |
+| **2.3 切换配置文件** | 在 `/opt/ppp/` 目录下扫描所有 `.json` 文件，通过 `sed` 修改 `ppp.sh` 中的 `--config=./xxx.json` 参数，实现配置文件切换 |
+| **2.4 BDP 窗口计算器** | 根据带宽和延迟计算最优 TCP/UDP 窗口大小（CWND/RWND），支持保守/均衡/激进三档，并自动写入当前配置文件 |
+| **2.5 修改 GUID** | 读取当前配置文件，修改 `.client.guid` 字段，支持手动输入或自动生成 UUID |
 
-运行后进入图形菜单，选择 `1) 服务端 - 完整自动安装` 即可完成服务端部署。
+### 通用功能
+| 选项 | 功能 |
+|------|------|
+| **3 更新二进制文件** | 重新下载并替换 `ppp` 二进制（会检测是否需要 `libunwind`） |
+| **4 重启服务** | `systemctl restart ppp.service` |
+| **5 停止服务** | `systemctl stop ppp.service` |
+| **6 查看运行状态** | `tmux attach -t ppp` 连接到 ppp 的 tmux 会话查看 TUI 界面（按 `Ctrl+B` 再按 `D` 退出） |
+| **7 完全卸载** | 停止并禁用服务，删除 systemd 单元，可选保留/删除配置文件，删除快捷命令 |
+| **8 更新本脚本** | 从 GitHub 拉取最新版 ppp_install.sh 并自动重新执行 |
+| **9 退出** | 退出脚本 |
 
-## 🧰 脚本功能详解
+---
 
-脚本启动后显示主菜单，支持以下操作：
+## 四、配置文件处理逻辑
 
-|选项|功能|
-|---|---|
-|**1) 服务端 - 完整自动安装**|选择代理/仓库 → 安装依赖 → 下载最优二进制 → 配置 appsettings.json → 创建 systemd 服务并启动|
-|**2) 服务端 - 配置系统服务**|仅将现有的 `/opt/ppp` 注册为 systemd 服务（适用于手动配置后补注册）|
-|**3) 通用 - 更新二进制文件**|重新下载最新版 openppp2 并替换，保留配置文件|
-|**4) 通用 - 重启服务**|重启 systemd 服务|
-|**5) 通用 - 停止服务**|停止 systemd 服务|
-|**6) 通用 - 查看运行状态**|进入 tmux 会话（`ppp`）实时查看日志输出（`Ctrl+B D` 退出）|
-|**7) 通用 - 完全卸载**|停止服务、删除 systemd 单元、可选删除所有配置和数据|
-|**8) 更新本脚本**|从 GitHub 拉取最新版 `ppp_install.sh`|
-|**9) 客户端 - 更换配置文件**|扫描 `/opt/ppp/*.json`，选择后修改 `ppp.sh` 中的 `--config=` 参数并重启服务|
-|**10) 退出**|退出脚本|
+脚本使用 `jq` 操作 JSON 配置：
+- **服务端**：自动生成/修改 `appsettings.json`，配置监听 IP、端口、GUID、协议密钥 (`protocol-key`)、传输密钥 (`transport-key`)
+- **客户端**：支持多配置文件，通过 `ppp.sh` 中的 `--config=./xxx.json` 指定当前使用的配置
+- **智能回退**：`get_current_config()` 会按以下顺序查找当前配置：
+  1. `ppp.sh` 中的 `--config` 参数
+  2. `/opt/ppp/appsettings.json`
+  3. `/opt/ppp/` 下任意 `.json` 文件
 
-### 智能版本选择
+---
 
-脚本会根据 CPU 特性、内核版本、glibc 版本自动选择最合适的二进制文件：
+## 五、BDP（带宽延迟积）计算器 (`bdp_calculator`)
 
-- 检测 `io_uring` 支持（内核 ≥ 5.10）
-    
-- 检测 AES-NI 指令集
-    
-- 检测 是否`tc`加成 
-    
-- 低 glibc 系统自动选用 `debian10` 兼容包（仅 Miaocchi 仓库）
-    
+用于优化网络传输窗口大小：
+- **公式**：窗口 = 带宽(bps) / 8 × RTT(ms) / 1000
+- **自动测延迟**：Ping `1.1.1.1` 获取 RTT，失败则手动输入
+- **2 的幂次对齐**：计算结果向上取到最接近的 2 的幂次，以享受缓存行优化
+- **三档策略**：
+  - 保守：CWND = 计算值/2, RWND = 计算值
+  - 均衡：CWND = 计算值, RWND = 计算值×2（默认）
+  - 激进：CWND = 计算值×2, RWND = 计算值×4
 
-### 进程管理方式
+---
 
-- **systemd**：后台守护，开机自启，常用命令 `systemctl {start\|stop\|restart} ppp`
-    
-- **tmux**：运行时输出绑定到 tmux 会话 `ppp`，通过选项 6 可实时查看彩色日志
-    
+## 六、启动脚本处理
 
-## ⚙️ 服务端配置示例（自动生成）
+脚本会根据模式下载不同的启动脚本模板：
+- **服务端模式**：下载 ppp.sh
+- **客户端模式**：下载 client.sh
 
-自动安装会交互式询问以下参数，并写入 `/opt/ppp/appsettings.json`：
+两者都会被保存为 `/opt/ppp/ppp.sh`，并被 systemd 服务调用。
 
-- 监听 IP（默认 `0.0.0.0`）
-    
-- 监听端口（默认 `20000`）
-    
-- GUID（随机生成）
-    
-- protocol-key / transport-key（随机生成 16 位字符串）
-    
+---
 
-若需高级配置（如多用户、限速），请手动编辑 `appsettings.json` 后重启服务。
+## 七、systemd 服务 (`setup_systemd_service`)
 
-## 🧩 客户端模式使用
+从仓库下载 `ppp.service` 文件到 `/etc/systemd/system/`，然后：
+- `daemon-reload`
+- `enable --now`（立即启用并启动）
 
-1. 在服务端安装完成后，将 `/opt/ppp/ppp` 二进制和对应 `client.json` 拷贝到客户端机器。
-    
-2. 在客户端运行本脚本，选择 `9) 客户端 - 更换配置文件`，选择你的 `client.json`。
-    
-3. 脚本会自动生成 `/opt/ppp/ppp.sh` 并启动服务。
-    
+---
 
-> 客户端需自行准备 JSON 配置文件，格式参考 [openppp2 文档](https://github.com/liulilittle/openppp2#client)。
+## 八、设计亮点
 
-## ❓ 常见问题
+1. **零依赖检测**：`glibc_lt_238()` 使用纯 bash 字符串分割，不依赖 `bc`
+2. **低版本兼容**：Miaocchi 版在低 glibc 系统自动选择 `debian10` 兼容包
+3. **IPv4/IPv6 双栈下载**：`wget` 失败时自动回退 `-4`/`-6`
+4. **非侵入式更新**：更新二进制时如果服务正在运行，会自动重启
+5. **配置保护**：卸载时可选保留配置文件
+6. **状态可视化**：用 `tmux attach` 替代 `systemctl status`，完美显示 TUI 界面
 
-### Q: 如何查看详细日志？
+---
 
-A: 主菜单选 `6)` 进入 tmux 界面，或执行 `journalctl -u ppp -f`。
-
-### Q: 安装后无法启动？
-
-A: 执行 `systemctl status ppp` 查看错误，常见原因：端口被占用、libunwind 缺失、配置文件 JSON 语法错误。
-
-### Q: 如何更换仓库？
-
-A: 重新运行脚本，选 `3) 更新二进制`，在提示时选择另一个仓库即可。
-
-### Q: armv7 设备是否支持？
-
-A: 支持，脚本会自动下载对应架构的二进制（Miaocchi 仓库提供 cross 版本）。
-
-## 📄 许可证
-
-本脚本采用 MIT 协议，openppp2 项目请参考各自仓库的许可证。
-
-## 🙏 致谢
-
-- [liulilittle](https://github.com/liulilittle) 开源的高性能隧道实现
-    
-- [Miaocchi](https://github.com/Miaocchi) 提供的兼容性增强版本
-    
-- 国内加速服务由 [git.apad.pro](https://git.apad.pro/) 提供
+总结来说，这是一个**功能非常完善的自动化运维脚本**，涵盖了 openppp2 从安装、配置、优化到卸载的全生命周期管理，特别适合在 VPS 上快速部署和后续维护。
