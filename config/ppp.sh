@@ -2,7 +2,7 @@
 # openppp2 启动脚本（tmux 伪终端 + systemd 托管，不写日志）
 
 cd /opt/ppp
-
+chmod +x ppp ppp.sh
 # 结束已有的同名会话
 tmux kill-session -t ppp 2>/dev/null
 
