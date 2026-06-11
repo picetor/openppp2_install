@@ -1,6 +1,18 @@
 Optimized tool selection这是一个 **`openppp2` 的一键安装与管理脚本**（版本 v4.7），支持**服务端**和**客户端**两种模式，内置智能版本选择、系统服务管理和 TUI 状态查看。以下是详细的功能分析：
 
 ---
+## 🚀 一键安装命令
+### 直连 GitHub（海外服务器或网络良好）
+```bash
+wget -4 -O ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
+```
+### 使用国内加速（大陆服务器）
+
+```bash
+wget -4 -O ppp_install.sh https://git.apad.pro/https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh && chmod +x ppp_install.sh && ./ppp_install.sh
+```
+
+运行后进入图形菜单，选择 `1) 服务端 - 完整自动安装` 即可完成服务端部署。
 
 ## 一、脚本概述
 
