@@ -102,14 +102,56 @@ select_repo() {
     print "📦 请选择 openppp2 仓库" "$BLUE"
     echo "1) liulilittle/openppp2 (原版，全兼容，按特性优化)"
     echo "2) Miaocchi/openppp2   (扩展版，低版本系统自动兼容)"
-    read -p "请输入 [1-2]（默认 1）: " REPO_CHOICE
-    if [ "$REPO_CHOICE" = "2" ]; then
+    echo "3) picetor/openppp2    (OpenWrt 预编译版，下载后统一命名为 ppp)"
+    read -p "请输入 [1-3]（默认 1）: " REPO_CHOICE
+    if [ "$REPO_CHOICE" = "3" ]; then
+        REPO_OWNER="picetor"
+        REPO_TAG="ppp"
+        REPO_KIND="openwrt"
+        print "✅ 已选择 picetor/openppp2（OpenWrt 预编译版）" "$GREEN"
+    elif [ "$REPO_CHOICE" = "2" ]; then
         REPO_OWNER="Miaocchi"
+        REPO_TAG="latest"
+        REPO_KIND="zip"
         print "✅ 已选择 Miaocchi/openppp2" "$GREEN"
     else
         REPO_OWNER="liulilittle"
+        REPO_TAG="latest"
+        REPO_KIND="zip"
         print "✅ 已选择 liulilittle/openppp2（全兼容）" "$GREEN"
     fi
+}
+
+# ==================== OpenWrt 二进制选择 ====================
+choose_openwrt_binary() {
+    local arch
+    arch=$(uname -m)
+
+    case "$arch" in
+        x86_64|amd64)
+            if kernel_supports_io_uring && has_aesni && has_tc; then
+                echo "ppp_linux_amd64_tc_io_uring_simd"
+            elif kernel_supports_io_uring && has_aesni; then
+                echo "ppp_linux_amd64_io_uring_simd"
+            elif kernel_supports_io_uring && has_tc; then
+                echo "ppp_linux_amd64_tc_io_uring"
+            elif kernel_supports_io_uring; then
+                echo "ppp_linux_amd64_io_uring"
+            elif has_aesni && has_tc; then
+                echo "ppp_linux_amd64_tc_simd"
+            elif has_aesni; then
+                echo "ppp_linux_amd64_simd"
+            elif has_tc; then
+                echo "ppp_linux_amd64_tc"
+            else
+                echo "ppp_linux_amd64"
+            fi
+            ;;
+        *)
+            print "❌ OpenWrt 预编译版当前仅支持 x86_64/amd64" "$RED"
+            exit 1
+            ;;
+    esac
 }
 
 # ==================== 智能版本选择 ====================
@@ -252,30 +294,42 @@ install_deps() {
 
 # ==================== 下载解压主程序 ====================
 download_main_binary() {
-    local zip_name url
-    zip_name=$(choose_best_zip)
-    print "🔍 最优版本：$zip_name (仓库: $REPO_OWNER)" "$BLUE"
+    local asset_name url
+    if [ "$REPO_KIND" = "openwrt" ]; then
+        asset_name=$(choose_openwrt_binary)
+        print "🔍 最优版本：$asset_name (仓库: $REPO_OWNER/$REPO_TAG)" "$BLUE"
+    else
+        asset_name=$(choose_best_zip)
+        print "🔍 最优版本：$asset_name (仓库: $REPO_OWNER)" "$BLUE"
+    fi
 
     mkdir -p /opt/ppp || return 1
     cd /opt/ppp || return 1
 
-    url="${GITHUB_PROXY}https://github.com/${REPO_OWNER}/openppp2/releases/latest/download/${zip_name}"
-    prompt_replace_file "/opt/ppp/${zip_name}" "$url" "$zip_name" || return 1
-
-    command_exists unzip || { print "❌ 未安装 unzip" "$RED"; return 1; }
-    if unzip -o "$zip_name" ppp -d . && chmod +x ppp; then
-        rm -f "$zip_name"
-        print "✅ openppp2 二进制准备完成" "$GREEN"
-        # 替换赋权后自动重启服务
-        if systemctl is-active --quiet ppp.service 2>/dev/null; then
-            print "🔄 正在重启服务..." "$BLUE"
-            systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
-        fi
-        return 0
+    if [ "$REPO_KIND" = "openwrt" ]; then
+        url="${GITHUB_PROXY}https://github.com/${REPO_OWNER}/openppp2/releases/download/${REPO_TAG}/${asset_name}"
+        prompt_replace_file "/opt/ppp/ppp" "$url" "ppp" || return 1
+        chmod +x /opt/ppp/ppp
+        print "✅ OpenWrt 预编译二进制已保存为 ppp" "$GREEN"
     else
-        print "❌ 解压失败" "$RED"
-        return 1
+        url="${GITHUB_PROXY}https://github.com/${REPO_OWNER}/openppp2/releases/latest/download/${asset_name}"
+        prompt_replace_file "/opt/ppp/${asset_name}" "$url" "$asset_name" || return 1
+
+        command_exists unzip || { print "❌ 未安装 unzip" "$RED"; return 1; }
+        if unzip -o "$asset_name" ppp -d . && chmod +x ppp; then
+            rm -f "$asset_name"
+            print "✅ openppp2 二进制准备完成" "$GREEN"
+        else
+            print "❌ 解压失败" "$RED"
+            return 1
+        fi
     fi
+
+    if systemctl is-active --quiet ppp.service 2>/dev/null; then
+        print "🔄 正在重启服务..." "$BLUE"
+        systemctl restart ppp.service && print "✅ 服务已重启" "$GREEN" || print "⚠️ 重启失败" "$YELLOW"
+    fi
+    return 0
 }
 
 # ==================== systemd 服务 ====================
@@ -336,7 +390,16 @@ server_install() {
     read -p "GUID（留空自动生成）: " NEW_GUID
     NEW_IP=${NEW_IP:-0.0.0.0}
     NEW_PORT=${NEW_PORT:-20000}
-    [[ -z "$NEW_GUID" ]] && NEW_GUID=$(uuidgen)
+    if [ -z "$NEW_GUID" ]; then
+        if command_exists uuidgen; then
+            NEW_GUID=$(uuidgen)
+        else
+            NEW_GUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null)
+        fi
+    fi
+    if [ -z "$NEW_GUID" ]; then
+        NEW_GUID=$(date +%s | md5sum | head -c 32)
+    fi
 
     PROTOCOL_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
     TRANSPORT_KEY=$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 16)
@@ -464,6 +527,9 @@ client_configure_service() {
 update_binary_only() {
     select_proxy
     select_repo
+    if [ "$REPO_KIND" = "openwrt" ]; then
+        print "🔍 OpenWrt 预编译版将直接下载可执行文件并保存为 ppp" "$BLUE"
+    fi
     # 原版 liulilittle 为静态编译，无需 libunwind；仅 Miaocchi 扩展版需要
     if [ "$REPO_OWNER" = "Miaocchi" ]; then
         install_libunwind || return 1
@@ -631,7 +697,7 @@ ping_rtt() {
 bdp_calculator() {
     print "📐 BDP 窗口计算器" "$BLUE"
     echo "根据带宽和延迟计算最优 RWND/CWND 值"
-    echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT(ms) / 1000"
+    echo "公式: 窗口 ≈ 带宽(bps) / 8 * RTT² / 1000"
     echo
 
     # Ping 1.1.1.1 自动测延迟，失败则手动输入
