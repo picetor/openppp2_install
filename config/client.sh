@@ -13,7 +13,7 @@ ulimit -c unlimited
 
 iptables -t nat -F
 iptables -t nat -A POSTROUTING -j MASQUERADE
-./ppp --mode=client --config=./{config}.json --tun-mux=0 --dns=127.0.0.1 --tun-host=yes --tun-vnet=yes --tun-gw=192.168.12.0 --tun-ip=192.168.12.10 --tun-flash=yes --tun-mask=24 --link-restart=3 --tun-static=no --block-quic=yes --tun-mux-acceleration=3 --tun-ssmt=4/mq'
+./ppp --mode=client --config=./{config}.json --tun-mux=0 --tun-host=yes --tun-vnet=yes --tun-gw=192.168.12.0 --tun-ip=192.168.12.10 --tun-flash=yes --tun-mask=24 --link-restart=3 --tun-static=no --block-quic=yes --tun-mux-acceleration=3 --tun-ssmt=4/mq'
 
 # 等待 tmux 会话完全创建
 sleep 1
