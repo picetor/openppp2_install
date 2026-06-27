@@ -62,26 +62,42 @@ glibc_lt_238() {
     return 1
 }
 
-# ==================== libunwind 安装 ====================
+# ==================== libunwind + libatomic 安装（Miaocchi 扩展版需要） ====================
 install_libunwind() {
     if ldconfig -p 2>/dev/null | grep -q 'libunwind\.so\.8'; then
         print "✅ libunwind.so.8 已存在" "$GREEN"
-        return 0
-    fi
-    print "🔧 检测到缺少 libunwind.so.8，正在安装..." "$YELLOW"
-    if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq libunwind8
-    elif command_exists dnf; then
-        dnf install -y -q libunwind
-    elif command_exists yum; then
-        yum install -y -q libunwind
     else
-        print "❌ 无法识别包管理器，请手动安装 libunwind" "$RED"
-        return 1
+        print "🔧 检测到缺少 libunwind.so.8，正在安装..." "$YELLOW"
+        if command_exists apt-get; then
+            apt-get update -qq && apt-get install -y -qq libunwind8
+        elif command_exists dnf; then
+            dnf install -y -q libunwind
+        elif command_exists yum; then
+            yum install -y -q libunwind
+        else
+            print "❌ 无法识别包管理器，请手动安装 libunwind" "$RED"
+            return 1
+        fi
+        ldconfig -p 2>/dev/null | grep -q 'libunwind\.so\.8' && { print "✅ libunwind 安装成功" "$GREEN"; } || { print "❌ libunwind 安装失败" "$RED"; return 1; }
     fi
-    ldconfig -p 2>/dev/null | grep -q 'libunwind\.so\.8' && { print "✅ libunwind 安装成功" "$GREEN"; return 0; }
-    print "❌ libunwind 安装失败" "$RED"
-    return 1
+    # 同时安装 libatomic（Miaocchi 动态编译需要）
+    if ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1'; then
+        print "✅ libatomic.so.1 已存在" "$GREEN"
+    else
+        print "🔧 检测到缺少 libatomic.so.1，正在安装..." "$YELLOW"
+        if command_exists apt-get; then
+            apt-get install -y -qq libatomic1
+        elif command_exists dnf; then
+            dnf install -y -q libatomic
+        elif command_exists yum; then
+            yum install -y -q libatomic
+        else
+            print "❌ 无法识别包管理器，请手动安装 libatomic" "$RED"
+            return 1
+        fi
+        ldconfig -p 2>/dev/null | grep -q 'libatomic\.so\.1' && { print "✅ libatomic 安装成功" "$GREEN"; } || { print "❌ libatomic 安装失败" "$RED"; return 1; }
+    fi
+    return 0
 }
 
 # ==================== 代理选择 ====================
@@ -239,18 +255,18 @@ prompt_replace_file() {
 
 # ==================== 依赖安装（含 tmux） ====================
 install_deps() {
-    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux, libatomic)..." "$BLUE"
+    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux)..." "$BLUE"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux libatomic1
+        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux
     elif command_exists dnf; then
-        dnf install -y -q jq util-linux unzip tmux libatomic
+        dnf install -y -q jq util-linux unzip tmux
     elif command_exists yum; then
-        yum install -y -q jq util-linux unzip tmux libatomic
+        yum install -y -q jq util-linux unzip tmux
     else
         print "❌ 无法识别包管理器" "$RED"; return 1
     fi
     command_exists jq && command_exists unzip && command_exists tmux || { print "❌ 依赖安装失败" "$RED"; return 1; }
-    # 原版 liulilittle 为静态编译，无需 libunwind；仅 Miaocchi 扩展版需要
+    # 原版 liulilittle 为静态编译，无需 libunwind/libatomic；仅 Miaocchi 扩展版需要
     if [ "$REPO_OWNER" = "Miaocchi" ]; then
         install_libunwind || return 1
     else
