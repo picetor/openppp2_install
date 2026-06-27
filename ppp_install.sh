@@ -239,13 +239,13 @@ prompt_replace_file() {
 
 # ==================== 依赖安装（含 tmux） ====================
 install_deps() {
-    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux)..." "$BLUE"
+    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux, libatomic)..." "$BLUE"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux
+        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux libatomic1
     elif command_exists dnf; then
-        dnf install -y -q jq util-linux unzip tmux
+        dnf install -y -q jq util-linux unzip tmux libatomic
     elif command_exists yum; then
-        yum install -y -q jq util-linux unzip tmux
+        yum install -y -q jq util-linux unzip tmux libatomic
     else
         print "❌ 无法识别包管理器" "$RED"; return 1
     fi

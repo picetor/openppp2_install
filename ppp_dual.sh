@@ -18,27 +18,25 @@ command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 # ==================== 快捷命令 ====================
 create_ppp_shortcut() {
-    if [ ! -f "/usr/local/bin/ppp" ]; then
-        cat > /usr/local/bin/ppp << 'EOF'
+    # ppp 命令指向双模式脚本（超集，可覆盖单+双所有操作）
+    cat > /usr/local/bin/ppp << 'EOF'
 #!/bin/bash
-if [ -f "/root/ppp_install.sh" ]; then
+if [ -f "/root/ppp_dual.sh" ]; then
+    exec bash /root/ppp_dual.sh
+elif [ -f "/root/ppp_install.sh" ]; then
     exec bash /root/ppp_install.sh
 else
-    echo "❌ 脚本文件 /root/ppp_install.sh 不存在" >&2
-    echo "请先运行安装脚本，或手动下载:" >&2
-    echo "wget -4 -O /root/ppp_install.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_install.sh" >&2
-    echo "chmod +x /root/ppp_install.sh" >&2
+    echo "❌ 未找到安装脚本" >&2
+    echo "请先下载:" >&2
+    echo "wget -4 -O /root/ppp_dual.sh https://raw.githubusercontent.com/picetor/openppp2_install/main/ppp_dual.sh" >&2
+    echo "chmod +x /root/ppp_dual.sh" >&2
     exit 1
 fi
 EOF
-        chmod +x /usr/local/bin/ppp
-        print "✅ 已创建 ppp 快捷命令 (指向 ppp_install.sh)" "$GREEN"
-    else
-        print "✅ ppp 快捷命令已存在" "$GREEN"
-    fi
-    # 同时创建 ppp-dual 快捷命令指向本双模式脚本
-    if [ ! -f "/usr/local/bin/ppp-dual" ]; then
-        cat > /usr/local/bin/ppp-dual << 'EOF'
+    chmod +x /usr/local/bin/ppp
+    print "✅ 已更新 ppp 快捷命令（优先指向双模式脚本）" "$GREEN"
+    # 同时创建 ppp-dual 快捷命令（双脚本专属）
+    cat > /usr/local/bin/ppp-dual << 'EOF'
 #!/bin/bash
 if [ -f "/root/ppp_dual.sh" ]; then
     exec bash /root/ppp_dual.sh
@@ -50,11 +48,8 @@ else
     exit 1
 fi
 EOF
-        chmod +x /usr/local/bin/ppp-dual
-        print "✅ 已创建 ppp-dual 快捷命令！（双模式脚本）" "$GREEN"
-    else
-        print "✅ ppp-dual 快捷命令已存在" "$GREEN"
-    fi
+    chmod +x /usr/local/bin/ppp-dual
+    print "✅ 已创建 ppp-dual 快捷命令" "$GREEN"
 }
 
 # ==================== 系统检测 ====================
@@ -259,13 +254,13 @@ prompt_replace_file() {
 
 # ==================== 依赖安装（含 tmux） ====================
 install_deps() {
-    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux)..." "$BLUE"
+    print "🔧 安装基础依赖 (jq, uuid, unzip, tmux, libatomic)..." "$BLUE"
     if command_exists apt-get; then
-        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux
+        apt-get update -qq && apt-get install -y -qq jq uuid-runtime unzip tmux libatomic1
     elif command_exists dnf; then
-        dnf install -y -q jq util-linux unzip tmux
+        dnf install -y -q jq util-linux unzip tmux libatomic
     elif command_exists yum; then
-        yum install -y -q jq util-linux unzip tmux
+        yum install -y -q jq util-linux unzip tmux libatomic
     else
         print "❌ 无法识别包管理器" "$RED"; return 1
     fi
