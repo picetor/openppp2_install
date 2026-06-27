@@ -1,0 +1,22 @@
+[Unit]
+Description=PPP PRIVATE NETWORK™ 2 - Server (Dual Mode)
+After=network.target network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/ppp/server
+ExecStart=/bin/bash /opt/ppp/server/ppp-server.sh
+ExecStop=/bin/bash -c 'tmux send-keys -t ppp-server C-c 2>/dev/null; sleep 2; tmux kill-session -t ppp-server 2>/dev/null'
+Restart=always
+RestartSec=20
+StartLimitBurst=5
+StartLimitIntervalSec=60
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=15
+SyslogIdentifier=ppp-server
+
+[Install]
+WantedBy=multi-user.target
